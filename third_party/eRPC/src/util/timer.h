@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <time.h>
+#include <chrono>
 #include "common.h"
 
 namespace erpc {
@@ -30,10 +30,36 @@ static void nano_sleep(size_t ns, double freq_ghz) {
   while (end - start < upp) end = rdtsc();
 }
 
+/// Simple time that uses std::chrono
+class ChronoTimer {
+ public:
+  ChronoTimer() { reset(); }
+  void reset() { start_time_ = std::chrono::high_resolution_clock::now(); }
+
+  /// Return seconds elapsed since this timer was created or last reset
+  double get_sec() const { return get_ns() / 1e9; }
+
+  /// Return milliseconds elapsed since this timer was created or last reset
+  double get_ms() const { return get_ns() / 1e6; }
+
+  /// Return microseconds elapsed since this timer was created or last reset
+  double get_us() const { return get_ns() / 1e3; }
+
+  /// Return nanoseconds elapsed since this timer was created or last reset
+  size_t get_ns() const {
+    return static_cast<size_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::high_resolution_clock::now() - start_time_)
+            .count());
+  }
+
+ private:
+  std::chrono::time_point<std::chrono::high_resolution_clock> start_time_;
+};
+
 static double measure_rdtsc_freq() {
-  struct timespec start, end;
-  clock_gettime(CLOCK_REALTIME, &start);
-  uint64_t rdtsc_start = rdtsc();
+  ChronoTimer chrono_timer;
+  const uint64_t rdtsc_start = rdtsc();
 
   // Do not change this loop! The hardcoded value below depends on this loop
   // and prevents it from being optimized out.
@@ -43,16 +69,11 @@ static double measure_rdtsc_freq() {
   }
   rt_assert(sum == 13580802877818827968ull, "Error in RDTSC freq measurement");
 
-  clock_gettime(CLOCK_REALTIME, &end);
-  uint64_t clock_ns =
-      static_cast<uint64_t>(end.tv_sec - start.tv_sec) * 1000000000 +
-      static_cast<uint64_t>(end.tv_nsec - start.tv_nsec);
-  uint64_t rdtsc_cycles = rdtsc() - rdtsc_start;
+  const uint64_t rdtsc_cycles = rdtsc() - rdtsc_start;
+  const double freq_ghz = rdtsc_cycles * 1.0 / chrono_timer.get_ns();
+  rt_assert(freq_ghz >= 0.5 && freq_ghz <= 5.0, "Invalid RDTSC frequency");
 
-  double _freq_ghz = rdtsc_cycles * 1.0 / clock_ns;
-  rt_assert(_freq_ghz >= 0.5 && _freq_ghz <= 5.0, "Invalid RDTSC frequency");
-
-  return _freq_ghz;
+  return freq_ghz;
 }
 
 /// Convert cycles measured by rdtsc with frequence \p freq_ghz to seconds
@@ -87,40 +108,26 @@ static double to_nsec(size_t cycles, double freq_ghz) {
   return (cycles / freq_ghz);
 }
 
-/// Return seconds elapsed since timestamp \p t0
-static double sec_since(const struct timespec &t0) {
-  struct timespec t1;
-  clock_gettime(CLOCK_REALTIME, &t1);
-  return (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1000000000.0;
-}
-
-/// Return nanoseconds elapsed since timestamp \p t0
-static double ns_since(const struct timespec &t0) {
-  struct timespec t1;
-  clock_gettime(CLOCK_REALTIME, &t1);
-  return (t1.tv_sec - t0.tv_sec) * 1000000000.0 + (t1.tv_nsec - t0.tv_nsec);
-}
-
 /// Simple time that uses RDTSC
 class TscTimer {
  public:
-  size_t start_tsc = 0;
-  size_t tsc_sum = 0;
-  size_t num_calls = 0;
+  size_t start_tsc_ = 0;
+  size_t tsc_sum_ = 0;
+  size_t num_calls_ = 0;
 
-  inline void start() { start_tsc = rdtsc(); }
+  inline void start() { start_tsc_ = rdtsc(); }
   inline void stop() {
-    tsc_sum += (rdtsc() - start_tsc);
-    num_calls++;
+    tsc_sum_ += (rdtsc() - start_tsc_);
+    num_calls_++;
   }
 
   void reset() {
-    start_tsc = 0;
-    tsc_sum = 0;
-    num_calls = 0;
+    start_tsc_ = 0;
+    tsc_sum_ = 0;
+    num_calls_ = 0;
   }
 
-  size_t avg_cycles() const { return tsc_sum / num_calls; }
+  size_t avg_cycles() const { return tsc_sum_ / num_calls_; }
   double avg_sec(double freq_ghz) const {
     return to_sec(avg_cycles(), freq_ghz);
   }

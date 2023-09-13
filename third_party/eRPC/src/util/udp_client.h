@@ -1,12 +1,14 @@
 #pragma once
 
-#include <netdb.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <map>
-#include <stdexcept>
-#include <vector>
+#ifdef _WIN32
+#define _WIN32_WINNT 0x0A00
+#endif
+
+#define ASIO_STANDLONE
+#include <asio/ts/buffer.hpp>
+#include <asio/ts/internet.hpp>
+#include <memory>
+#include "logger.h"
 
 namespace erpc {
 
@@ -15,72 +17,71 @@ namespace erpc {
 template <class T>
 class UDPClient {
  public:
-  UDPClient() {
-    sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock_fd == -1) {
-      throw std::runtime_error("UDPClient: Failed to create local socket.");
-    }
+  UDPClient()
+      : resolver_(new asio::ip::udp::resolver(io_context_)),
+        socket_(new asio::ip::udp::socket(io_context_)) {
+    socket_->open(asio::ip::udp::v4());
   }
 
   UDPClient(const UDPClient &) = delete;
 
-  ~UDPClient() {
-    for (auto kv : addrinfo_map) freeaddrinfo(kv.second);
-    if (sock_fd != -1) close(sock_fd);
-  }
+  ~UDPClient() {}
 
-  ssize_t send(const std::string rem_hostname, uint16_t rem_port,
-               const T &msg) {
-    std::string remote_uri = rem_hostname + ":" + std::to_string(rem_port);
-    struct addrinfo *rem_addrinfo = nullptr;
+  /**
+   * @brief Send a UDP message to a remote host
+   *
+   * @param rem_hostname DNS-resolvable name of the remote host
+   * @param rem_port Destination UDP port to send the message to
+   * @param msg Contents of the message
+   *
+   * @return Number of bytes sent on success, SIZE_MAX on failure
+   */
+  size_t send(const std::string rem_hostname, uint16_t rem_port, const T &msg) {
+    asio::error_code error;
+    asio::ip::udp::resolver::results_type results =
+        resolver_->resolve(rem_hostname, std::to_string(rem_port), error);
 
-    if (addrinfo_map.count(remote_uri) != 0) {
-      rem_addrinfo = addrinfo_map.at(remote_uri);
-    } else {
-      char port_str[16];
-      snprintf(port_str, sizeof(port_str), "%u", rem_port);
+    if (results.size() == 0) {
+      ERPC_ERROR("eRPC: Failed to resolve %s, asio error = %s.\n",
+                 rem_hostname.c_str(), error.message().c_str());
+      return SIZE_MAX;
+    }
 
-      struct addrinfo hints;
-      memset(&hints, 0, sizeof(hints));
-      hints.ai_family = AF_INET;
-      hints.ai_socktype = SOCK_DGRAM;
-      hints.ai_protocol = IPPROTO_UDP;
+    // Pick an IPv4 endpoint
+    for (const auto &endpoint_iter : results) {
+      if (!endpoint_iter.endpoint().address().is_v4()) continue;
 
-      int r =
-          getaddrinfo(rem_hostname.c_str(), port_str, &hints, &rem_addrinfo);
-      if (r != 0 || rem_addrinfo == nullptr) {
-        char issue_msg[1000];
-        sprintf(issue_msg, "Failed to resolve %s. getaddrinfo error = %s.",
-                remote_uri.c_str(), gai_strerror(r));
-        throw std::runtime_error(issue_msg);
+      try {
+        const size_t ret =
+            socket_->send_to(asio::buffer(&msg, sizeof(T)), endpoint_iter);
+        if (enable_recording_flag_) sent_vec_.push_back(msg);
+        return ret;
+      } catch (const asio::system_error &e) {
+        ERPC_ERROR("eRPC: asio send_to() failed to %s, error: %s\n",
+                   rem_hostname.c_str(), e.what());
+        return SIZE_MAX;
       }
-
-      addrinfo_map[remote_uri] = rem_addrinfo;
     }
 
-    ssize_t ret = sendto(sock_fd, &msg, sizeof(T), 0, rem_addrinfo->ai_addr,
-                         rem_addrinfo->ai_addrlen);
-    if (ret != static_cast<ssize_t>(sizeof(T))) {
-      throw std::runtime_error("sendto() failed. errno = " +
-                               std::string(strerror(errno)));
-    }
-
-    if (enable_recording_flag) sent_vec.push_back(msg);
-    return ret;
+    // We failed to find an IPv4 endpoint
+    ERPC_ERROR(
+        "eRPC: Failed to find an IPv4 endpoint to %s. Found %zu non-IPv4 "
+        "endpoints to %s though.\n",
+        rem_hostname.c_str(), results.size(), rem_hostname.c_str());
+    return SIZE_MAX;
   }
 
   /// Maintain a all packets sent by this client
-  void enable_recording() { enable_recording_flag = true; }
+  void enable_recording() { enable_recording_flag_ = true; }
 
  private:
-  int sock_fd = -1;
-
-  /// A cache mapping hostname:udp_port to addrinfo
-  std::map<std::string, struct addrinfo *> addrinfo_map;
+  asio::io_context io_context_;
+  std::unique_ptr<asio::ip::udp::resolver> resolver_;
+  std::unique_ptr<asio::ip::udp::socket> socket_;
 
   /// The list of all packets sent, maintained if recording is enabled
-  std::vector<T> sent_vec;
-  bool enable_recording_flag = false;  ///< Flag to enable recording for testing
-};
+  std::vector<T> sent_vec_;
+  bool enable_recording_flag_ = false;  /// Flag to enable recording for testing
+};                                      // namespace erpc
 
 }  // namespace erpc

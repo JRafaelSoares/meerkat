@@ -12,7 +12,7 @@ namespace erpc {
  * @relates Rpc
  * @brief Maximum number of eRPC processes per machine
  */
-static constexpr size_t kMaxNumERpcProcesses = 80;
+static constexpr size_t kMaxNumERpcProcesses = 32;
 
 /**
  * @relates Rpc

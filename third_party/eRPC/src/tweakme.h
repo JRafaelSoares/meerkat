@@ -13,8 +13,8 @@ namespace erpc {
 static constexpr size_t kRpcRTOUs = 5000;
 
 // Congestion control
-static constexpr bool kEnableCc = false;
-static constexpr bool kEnableCcOpts = false;
+static constexpr bool kEnableCc = true;
+static constexpr bool kEnableCcOpts = true;
 
 static constexpr bool kCcRTT = kEnableCc;       ///< Measure per-packet RTT
 static constexpr bool kCcRateComp = kEnableCc;  ///< Perform rate computation
@@ -30,6 +30,12 @@ static constexpr bool kCcOptWheelBypass = kEnableCcOpts;
 static constexpr bool kCcOptTimelyBypass = kEnableCcOpts;
 
 static_assert(kCcRTT || !kCcRateComp, "");  // Rate comp => RTT measurement
+
+/// Invoke request handlers directly on RX ring buffers to avoid copying
+/// to a dynamically-allocated msgbuf. Enabling this optimization restricts
+/// ownership of single-packet request msgbufs at the server to the duration
+/// of the request handler.
+static constexpr bool kZeroCopyRX = true;
 
 static constexpr bool kDatapathStats = false;
 }  // namespace erpc

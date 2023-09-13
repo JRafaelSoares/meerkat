@@ -17,7 +17,12 @@ yes | ~/.fzf/install
 # Systemish
 git clone https://github.com/anujkaliaiitd/systemish.git ~/systemish
 ~/systemish/configs/copy.sh
-vim -c 'PluginInstall' -c 'qa!'
 
 # Vundle
 git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/Vundle.vim
+vim -c 'PluginInstall' -c 'qa!'
+
+# Ripgrep
+sudo add-apt-repository ppa:x4121/ripgrep
+sudo apt-get update
+sudo apt install ripgrep

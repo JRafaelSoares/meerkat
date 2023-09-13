@@ -1,4 +1,4 @@
-#ifdef RAW
+#ifdef ERPC_RAW
 
 #include "raw_transport.h"
 #include "util/huge_alloc.h"
@@ -10,7 +10,6 @@ void RawTransport::tx_burst(const tx_burst_item_t* tx_burst_arr,
   for (size_t i = 0; i < num_pkts; i++) {
     const tx_burst_item_t& item = tx_burst_arr[i];
     const MsgBuffer* msg_buffer = item.msg_buffer;
-    assert(msg_buffer->is_valid());  // Can be fake for control packets
 
     // Verify constant fields of work request
     struct ibv_send_wr& wr = send_wr[i];
@@ -48,7 +47,7 @@ void RawTransport::tx_burst(const tx_burst_item_t* tx_burst_arr,
 
       size_t offset = item.pkt_idx * kMaxDataPerPkt;
       sgl[1].addr = reinterpret_cast<uint64_t>(&msg_buffer->buf[offset]);
-      sgl[1].length = std::min(kMaxDataPerPkt, msg_buffer->data_size - offset);
+      sgl[1].length = (std::min)(kMaxDataPerPkt, msg_buffer->data_size - offset);
       sgl[1].lkey = msg_buffer->buffer.lkey;
 
       pkt_size = sgl[0].length + sgl[1].length;
@@ -111,11 +110,11 @@ void RawTransport::tx_flush() {
   auto* pkthdr = reinterpret_cast<pkthdr_t*>(buffer.buf);
 
   // Create a valid packet to self, but later we'll garble the destination IP
-  RoutingInfo self_ri;
+  routing_info_t self_ri;
   fill_local_routing_info(&self_ri);
   resolve_remote_routing_info(&self_ri);
 
-  memcpy(&pkthdr->headroom[0], &self_ri, sizeof(RoutingInfo));
+  memcpy(&pkthdr->headroom[0], &self_ri, sizeof(routing_info_t));
 
   auto* ipv4_hdr =
       reinterpret_cast<ipv4_hdr_t*>(&pkthdr->headroom[sizeof(eth_hdr_t)]);

@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <boost/algorithm/string.hpp>
 #include <cerrno>
 #include <limits>
 #include <mutex>
@@ -31,10 +30,10 @@ namespace erpc {
 #define MB(x) (static_cast<size_t>(x) << 20)
 #define GB(x) (static_cast<size_t>(x) << 30)
 
-#ifndef TESTING
+#ifndef ERPC_TESTING
 static constexpr bool kTesting = false;
 #else
-static constexpr bool kTesting = TESTING;
+static constexpr bool kTesting = ERPC_TESTING;
 #endif
 
 // General constants
@@ -60,12 +59,14 @@ static constexpr size_t kInvalidBgETid = kMaxBgThreads;
 /// this returns the original hostname.
 static std::string trim_hostname(const std::string hostname) {
   if (hostname.find("akalia") != std::string::npos) {
-    std::vector<std::string> split;
-    boost::split(split, hostname, boost::is_any_of("."));
-    return split.at(0);
+    // If hostname doesn't have a dot, this just returns hostname
+    return hostname.substr(0, hostname.find("."));
   }
   return hostname;
 }
+
+#ifndef _WIN32
+static constexpr bool kIsWindows = false;
 
 /// Check a condition at runtime. If the condition is false, throw exception.
 static inline void rt_assert(bool condition, std::string throw_str, char *s) {
@@ -89,6 +90,38 @@ static inline void rt_assert(bool condition, std::string throw_str) {
 static inline void rt_assert(bool condition) {
   if (unlikely(!condition)) throw std::runtime_error("Error");
 }
+#else
+static constexpr bool kIsWindows = true;
+
+static inline void rt_assert(bool condition, std::string throw_str, char *s) {
+  if (unlikely(!condition)) {
+    fprintf(stderr, "%s %s\n", throw_str.c_str(), s);
+    exit(-1);
+  }
+}
+
+static inline void rt_assert(bool condition, const char *throw_str) {
+  if (unlikely(!condition)) {
+    fprintf(stderr, "%s\n", throw_str);
+    exit(-1);
+  }
+}
+
+static inline void rt_assert(bool condition, std::string throw_str) {
+  if (unlikely(!condition)) {
+    fprintf(stderr, "%s\n", throw_str.c_str());
+    exit(-1);
+  }
+}
+
+static inline void rt_assert(bool condition) {
+  if (unlikely(!condition)) {
+    fprintf(stderr, "Error\n");
+    assert(false);
+    exit(-1);
+  }
+}
+#endif
 
 /// Check a condition at runtime. If the condition is false, print error message
 /// and exit.

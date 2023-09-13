@@ -2,12 +2,13 @@
 
 d := $(dir $(lastword $(MAKEFILE_LIST)))
 
+#$(info d_thirdparty is $(d))
 ziplog_src := $(addprefix $(d), ziplog/src/)
 ziplog_network := $(addprefix $(ziplog_src), network)
 ziplog_util := $(addprefix $(ziplog_src), util)
 ziplog_client := $(addprefix $(ziplog_src), client)
-SRCS += $(ziplog_network)/buffer.cc $(ziplog_network)/manager.cc $(ziplog_network)/send_queue.cc $(ziplog_network)/recv_queue.cc \
-        $(ziplog_util)/util.cc $(ziplog_client)/client.cc
+SRCS_ZIP += $(ziplog_network)/buffer.cpp $(ziplog_network)/manager.cpp $(ziplog_network)/send_queue.cpp $(ziplog_network)/recv_queue.cpp \
+        $(ziplog_util)/util.cpp $(ziplog_client)/client.cpp
 
 ziplog_obj := $(addprefix $(o), ziplog/src/)
 ziplog_network_obj := $(addprefix $(ziplog_obj), network)

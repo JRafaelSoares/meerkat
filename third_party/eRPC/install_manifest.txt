@@ -1,0 +1,14 @@
+/usr/local/lib/cmake/hdr_histogram/hdr_histogram-targets.cmake
+/usr/local/lib/cmake/hdr_histogram/hdr_histogram-targets-debug.cmake
+/usr/local/lib/cmake/hdr_histogram/hdr_histogram-config.cmake
+/usr/local/lib/cmake/hdr_histogram/hdr_histogram-config-version.cmake
+/usr/local/lib/libhdr_histogram.so.6.1.1
+/usr/local/lib/libhdr_histogram.so.6
+/usr/local/lib/libhdr_histogram.so
+/usr/local/lib/libhdr_histogram_static.a
+/usr/local/include/hdr/hdr_histogram.h
+/usr/local/include/hdr/hdr_histogram_log.h
+/usr/local/include/hdr/hdr_interval_recorder.h
+/usr/local/include/hdr/hdr_thread.h
+/usr/local/include/hdr/hdr_time.h
+/usr/local/include/hdr/hdr_writer_reader_phaser.h

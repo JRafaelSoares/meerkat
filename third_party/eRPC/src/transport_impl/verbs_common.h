@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#ifndef DPDK
+#if defined(ERPC_RAW) || defined(ERPC_INFINIBAND)
 
 #include <dirent.h>
 #include <infiniband/verbs.h>
@@ -54,19 +54,19 @@ static std::string link_layer_str(uint8_t link_layer) {
  *
  * @throw runtime_error if memory registration fails
  */
-static Transport::MemRegInfo ibv_reg_mr_wrapper(struct ibv_pd *pd, void *buf,
-                                                size_t size) {
+static Transport::mem_reg_info ibv_reg_mr_wrapper(struct ibv_pd *pd, void *buf,
+                                                  size_t size) {
   struct ibv_mr *mr = ibv_reg_mr(pd, buf, size, IBV_ACCESS_LOCAL_WRITE);
   rt_assert(mr != nullptr, "Failed to register mr.");
 
   ERPC_INFO("Registered %zu MB (lkey = %u)\n", size / MB(1), mr->lkey);
-  return Transport::MemRegInfo(mr, mr->lkey);
+  return Transport::mem_reg_info(mr, mr->lkey);
 }
 
 /// A function wrapper used to generate a verbs transport's memory
 /// deregistration function
-static void ibv_dereg_mr_wrapper(Transport::MemRegInfo mr) {
-  auto *ib_mr = reinterpret_cast<struct ibv_mr *>(mr.transport_mr);
+static void ibv_dereg_mr_wrapper(Transport::mem_reg_info mr) {
+  auto *ib_mr = reinterpret_cast<struct ibv_mr *>(mr.transport_mr_);
   size_t size = ib_mr->length;
   uint32_t lkey = ib_mr->lkey;
 
@@ -194,6 +194,7 @@ static void common_resolve_phy_port(uint8_t phy_port, size_t mtu,
           case 8: gbps_per_lane = 10.0; break;
           case 16: gbps_per_lane = 14.0; break;
           case 32: gbps_per_lane = 25.0; break;
+          case 64: gbps_per_lane = 50.0; break;
           default: rt_assert(false, "Invalid active speed");
         };
 

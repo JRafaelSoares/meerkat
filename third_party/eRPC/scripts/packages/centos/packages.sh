@@ -6,17 +6,16 @@
 # Mellanox. However, eRPC should work with upstream mlx* packages as well
 
 # Update to the latest CentOS (e.g., CentOS 7.4 -> CentOS 7.5)
-sudo yum -y update
+# sudo yum -y update
 
-# This is required for yum to find most packages below
-wget -P /tmp/ https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-7-11.noarch.rpm
-sudo rpm -Uvh /tmp/epel-release*rpm
+# Install EPEL (Extra Packages for Enterprise Linux), needed for many packages below
+sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 
 ###
 ### Packages required for eRPC
 ###
-sudo yum -y install gcc-c++ cmake numactl-devel numactl bc gflags-devel \
-  boost-devel gtest gtest-devel libpmem libpmem-devel dpdk dpdk-devel
+sudo yum -y install git gcc-c++ cmake numactl-devel numactl bc gflags-devel \
+  libpmem libpmem-devel dpdk dpdk-devel
 
 ###
 ### Packages required to install Mellanox OFED
@@ -29,8 +28,8 @@ sudo yum -y install createrepo python2-devel elfutils-libelf-devel \
 ### Optional convenience packages
 ###
 
-# Update vim
-sudo curl -L https://copr.fedorainfracloud.org/coprs/mcepl/vim8/repo/epel-7/mcepl-vim8-epel-7.repo -o /etc/yum.repos.d/mcepl-vim8-epel-7.repo
+# Update vim. Find a repo from Fedora Copr if this link doesn't work
+sudo curl -L https://copr.fedorainfracloud.org/coprs/hnakamur/vim/repo/epel-7/hnakamur-vim-epel-7.repo -o /etc/yum.repos.d/hnakamur-vim-epel7.repo
 sudo yum -y update vim*
 
 # General packages not specific to eRPC

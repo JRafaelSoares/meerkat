@@ -118,6 +118,8 @@ o = .obj/$(d)
 
 # SRCS is the list of all non-test-related source files.
 SRCS :=
+# SRCS_ZIP is the list of all source files from ziplog
+SRCS_ZIP :=
 # TEST_SRCS is just like SRCS, but these source files will be compiled
 # with testing related flags.
 TEST_SRCS :=
@@ -184,8 +186,11 @@ DEPFLAGS = -M -MF ${@:.o=.d} -MP -MT $@ -MG
 # $(call add-CFLAGS,$(TEST_SRCS),$(CHECK_CFLAGS))
 OBJS := $(SRCS:%.cc=.obj/%.o) $(TEST_SRCS:%.cc=.obj/%.o) $(GTEST_SRCS:%.cc=.obj/%.o)
 
+OBJS_ZIP := $(SRCS_ZIP:%.cpp=.obj/%.o)
+
 define compile
 	@mkdir -p $(dir $@)
+	$(info 2 is $(2))
 	$(call trace,$(1),$<,\
 	  $(CC) -iquote. $(CFLAGS) $(CFLAGS-$<) $(2) $(DEPFLAGS) -E $<)
 	$(Q)$(CC) -iquote. $(CFLAGS) $(CFLAGS-$<) $(2) -E -o .obj/$*.t $<
@@ -206,11 +211,19 @@ endef
 # versions.
 # Slightly different rules for protobuf object files
 # because their source files have different locations.
+#$(info objs is $(OBJS))
+#$(info objs_zip is $(OBJS_ZIP))
 
 $(OBJS): .obj/%.o: %.cc $(PROTOSRCS)
 	$(call compilecxx,CC,)
 
 $(OBJS:%.o=%-pic.o): .obj/%-pic.o: %.cc $(PROTOSRCS)
+	$(call compilecxx,CCPIC,-fPIC)
+
+$(OBJS_ZIP): .obj/%.o: %.cpp $(PROTOSRCS)
+	$(call compilecxx,CC,)
+
+$(OBJS_ZIP:%.o=%-pic.o): .obj/%-pic.o: %.cpp $(PROTOSRCS)
 	$(call compilecxx,CCPIC,-fPIC)
 
 $(PROTOOBJS): .obj/%.o: .obj/gen/%.pb.cc
