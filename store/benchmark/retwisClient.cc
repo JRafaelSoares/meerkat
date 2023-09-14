@@ -254,6 +254,7 @@ void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manag
 
     // Use cores of NUMA1.
     printf("ziplog ziplog id=%d, cpu_id=%d, client_rate=%lu\n", ziplog_id, cpu_id, FLAGS_ziplogClientRate);
+    printf("%s", kOrderAddr.c_str());
     auto ziplogClient = std::make_shared<zip::client::client>(
         *manager, kOrderAddr, ziplog_id, kZiplogShardId, cpu_id, FLAGS_ziplogClientRate);
     for (int i = 0; i < FLAGS_numClientFibers; i++) {
