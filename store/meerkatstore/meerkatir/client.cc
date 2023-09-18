@@ -34,6 +34,7 @@
 #include "store/common/consts.h"
 #include "store/meerkatstore/meerkatir/client.h"
 #include "network/manager.h"
+#include "util/switch.h"
 
 #include <chrono>
 #include <cstring>
@@ -49,9 +50,12 @@ namespace meerkatir {
 
 using namespace std;
 
+/** create a logger for this file */
+static zip::util::logger logger("zipkat_client");
+
 Client::Client(int nsthreads, int nShards, uint32_t id,
                std::shared_ptr<zip::client::client> client,
-               zip::network::manager& manager)
+               zip::network::manager& manager, std::string order)
     : client_id(id), t_id(0),
       ziplogClient(client),
       ziplogBuffer(manager.get_buffers(zip::consts::PAGE_SIZE, /* num_buffers */1))
@@ -65,6 +69,46 @@ Client::Client(int nsthreads, int nShards, uint32_t id,
     std::mt19937_64 gen(rd());
     std::uniform_int_distribution<uint64_t> dis(1, ULLONG_MAX);
 
+    auto queues = manager.create_recv_queues(2);
+    recv_queue_ = std::move(queues.at(0));
+
+    // Contact the order server to obtain all meerkat replicas
+
+    // initialise the struct which is client's first message
+    intro_.message_type = zip::api::ZIPKAT_CLIENT_INTRO;
+    intro_.client_id = client_id;
+
+    // connect with the ordering service
+    auto [ip, port] = zip::util::split_address(order);
+    auto [send_queue, buffer, length] = manager.connect(ip, port, &intro_, intro_.length());
+    order_ = std::move(send_queue);
+
+    while (!stop_setup_.load(std::memory_order_relaxed)) {
+        zip::util::recv_apply(logger, recv_queue_,
+                              [&] (zip::api::client_zipkat_storage_info& info) {
+                                    unsigned long replication_factor = info.replication_factor;
+                                    int current_shard = 0;
+                                    int current_server = 0;
+                                  // connect to all the servers in the list
+                                  for (unsigned long i = 0; i < info.num_servers; i++) {
+                                      // verify the server's shard ID
+                                      auto x = info.addresses[0];
+                                      auto [send_queues, buffer, length] = manager.connect(info.addresses[i], &intro_, intro_.length(), 0);
+
+                                      // verify the server's intro message
+                                      auto& intro = *static_cast<zip::api::zipkat_storage_intro*>(buffer.get());
+                                      ZIP_ASSERT_EQ(length, intro.length(), "length of the received packet is invalid ", length, ", ", intro.length());
+                                      ZIP_ASSERT_EQ(intro.message_type, zip::api::ZIPKAT_STORAGE_INTRO, "received an unknown type of message (", intro.message_type, ")");
+
+                                      replica_queues_[current_shard].emplace_back(std::move(send_queues.front()));
+                                      if (++current_server == replication_factor) {
+                                          current_shard++;
+                                      }
+                                  }
+                                  stop_setup_.store(true, std::memory_order_relaxed);
+                              }
+        );
+    }
 /*
     while (client_id == 0) {
         client_id = dis(gen);

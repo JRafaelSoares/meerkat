@@ -90,7 +90,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     Assert(FLAGS_mode == "meerkatstore");
     auto client = std::make_unique<meerkatstore::meerkatir::Client>(
                                         FLAGS_numServerThreads, FLAGS_numShards,
-                                        global_thread_id, ziplogClient, *manager);
+                                        global_thread_id, ziplogClient, *manager, kOrderAddr);
     struct timeval t0, t1, t2;
 
     uint64_t nTransactions = 0;
@@ -254,9 +254,8 @@ void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manag
 
     // Use cores of NUMA1.
     printf("ziplog ziplog id=%d, cpu_id=%d, client_rate=%lu\n", ziplog_id, cpu_id, FLAGS_ziplogClientRate);
-    printf("%s", kOrderAddr.c_str());
-    auto ziplogClient = std::make_shared<zip::client::client>(
-        *manager, kOrderAddr, ziplog_id, kZiplogShardId, cpu_id, FLAGS_ziplogClientRate);
+    std::shared_ptr<zip::client::client> ziplogClient =nullptr;
+    //auto ziplogClient = std::make_shared<zip::client::client>(*manager, kOrderAddr, ziplog_id, kZiplogShardId, cpu_id, FLAGS_ziplogClientRate);
     for (int i = 0; i < FLAGS_numClientFibers; i++) {
         boost::fibers::fiber f(
             client_fiber_func, ziplog_id * FLAGS_numClientFibers + i, ziplogClient, manager);

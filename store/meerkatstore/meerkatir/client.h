@@ -54,7 +54,7 @@ class Client {
 public:
     Client(int nsthreads, int nShards, uint32_t id,
            std::shared_ptr<zip::client::client> client,
-           zip::network::manager& manager);
+           zip::network::manager& manager, std::string order);
 
     // Overriding functions from ::Client.
     void Begin();
@@ -87,6 +87,21 @@ private:
     // Ziplog data structures
     std::shared_ptr<zip::client::client> ziplogClient;
     std::list<zip::network::buffer> ziplogBuffer;
+
+    /** intro message for this client */
+    zip::api::zipkat_client_intro intro_;
+
+    /** network send queue to the ordering service */
+    zip::network::send_queue order_;
+
+    /** current client's network receive queue */
+    zip::network::recv_queue recv_queue_;
+
+    /** send queue to replicas */
+    std::array<std::vector<zip::network::send_queue>, ZIPKAT_SHARDS_MAX> replica_queues_;
+
+    /** signal to stop waiting for initial setup */
+    std::atomic<bool> stop_setup_ = false;
 
 #ifdef ZIP_MEASURE
     hdr_histogram* hist_get;
