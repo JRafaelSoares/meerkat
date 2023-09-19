@@ -71,6 +71,7 @@ Client::Client(int nsthreads, int nShards, uint32_t id,
 
     auto queues = manager.create_recv_queues(2);
     recv_queue_ = std::move(queues.at(0));
+    zipkat_get_recv_queue_ = std::move(queues.at(1));
 
     // Contact the order server to obtain all meerkat replicas
 
@@ -86,24 +87,28 @@ Client::Client(int nsthreads, int nShards, uint32_t id,
     while (!stop_setup_.load(std::memory_order_relaxed)) {
         zip::util::recv_apply(logger, recv_queue_,
                               [&] (zip::api::client_zipkat_storage_info& info) {
-                                    unsigned long replication_factor = info.replication_factor;
+                                    // Replica id that the client will stick to
+                                    sticky_replica_ = client_id % info.replication_factor;
+
                                     int current_shard = 0;
                                     int current_server = 0;
                                   // connect to all the servers in the list
                                   for (unsigned long i = 0; i < info.num_servers; i++) {
                                       // verify the server's shard ID
-                                      auto x = info.addresses[0];
                                       auto [send_queues, buffer, length] = manager.connect(info.addresses[i], &intro_, intro_.length(), 0);
 
                                       // verify the server's intro message
                                       auto& intro = *static_cast<zip::api::zipkat_storage_intro*>(buffer.get());
+
                                       ZIP_ASSERT_EQ(length, intro.length(), "length of the received packet is invalid ", length, ", ", intro.length());
                                       ZIP_ASSERT_EQ(intro.message_type, zip::api::ZIPKAT_STORAGE_INTRO, "received an unknown type of message (", intro.message_type, ")");
 
                                       replica_queues_[current_shard].emplace_back(std::move(send_queues.front()));
-                                      if (++current_server == replication_factor) {
+                                      if (++current_server == info.replication_factor) {
                                           current_shard++;
                                       }
+                                      // Picks the get queue the client will contact
+                                      zipkat_get_dest_ = client_id % intro.get_queues;
                                   }
                                   stop_setup_.store(true, std::memory_order_relaxed);
                               }
@@ -178,21 +183,39 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
     auto& req = request.buffer->as<zip::api::zipkat_get>();
     const auto leng = key.length();
     req.message_type = zip::api::ZIPKAT_GET;
-    req.client_id = ziplogClient->client_id();
+    req.client_id = client_id;
+    //req.client_id = ziplogClient->client_id();
+
     req.gsn = 0;
     req.data_length = leng;
+    req.mid = client_id;
     std::memcpy(req.key, key.data(), leng);
     Assert(req.length() < ZiplogBuffer().length());
 
     static std::string empty;
-    Assert(ziplogClient.get());
-    ziplogClient->zipkat_get(request);
+
+    //Assert(ziplogClient.get());
+
+    replica_queues_[getShard(key)][sticky_replica_].send(*(request.buffer), req.length(), zipkat_get_dest_, true);
+
     while (request.timestamp.load(std::memory_order_acquire) == -1) {
-/*
+        zip::util::recv_apply(logger, zipkat_get_recv_queue_,
+                              [&] (zip::api::zipkat_get_response& get_ack) {
+                                  const auto old_mid = get_ack.mid;
+                                  logger.trace("Received zipkat_get_response from server (", getShard(key), ":", get_ack.replica_id, ") with GSN ", get_ack.gsn, " mid=", get_ack.mid, ", data_length=", get_ack.data_length);
+
+                                  logger.trace("ack.mid=", get_ack.mid, ", it->mid=", req.mid, ", it->gsn=", req.gsn, ", ack.gsn=", get_ack.gsn);
+                                  ZIP_ASSERT_EQ(old_mid, get_ack.mid, "ack.mid got changed &ack.mid=", &get_ack.mid);
+                                  if (get_ack.mid == req.mid) {
+                                      req.gsn = get_ack.gsn;
+                                      request.timestamp.store(req.gsn, std::memory_order_relaxed);
+                                  }
+                              }
+        );
 #if ZIP_MEASURE
     auto start2 = std::chrono::high_resolution_clock::now();
 #endif
-        yield();
+        //yield();
 #ifdef ZIP_MEASURE
     auto end2 = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_yield, zip::util::time_in_us(end2 - start2));
@@ -205,8 +228,6 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
         std::cerr << "Client-yield (" << client_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;;
     }
 #endif
-*/
-        yield();
     }
 
     const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
@@ -263,13 +284,16 @@ int Client::Prepare(yield_t yield)
     req.client_id = client_id;
     req.gsn_after = 0;
     req.num_slots = 1;
+
+    /*
     auto commit_req = reinterpret_cast<zip::api::zipkat_commit_request*>(req.data);
     commit_req->data_length = txnLen;
     commit_req->nr_reads = txn.getReadSet().size();
     commit_req->nr_writes = txn.getWriteSet().size();
     txn.serialize((char*)commit_req->data);
     //txn.serialize(buf);
-    req.data_length = commit_req->length();
+     */
+    req.data_length = 0;
 
     Assert(req.length() < ZiplogBuffer().length());
     Assert(ziplogClient.get());
@@ -347,6 +371,16 @@ vector<int> Client::Stats()
 {
     vector<int> v;
     return v;
+}
+
+unsigned long Client::getShard(std::string key){
+    uint64_t hash = 5381;
+    const char* str = key.c_str();
+    for (unsigned int j = 0; j < key.length(); j++) {
+        hash = ((hash << 5) + hash) + (uint64_t)str[j];
+    }
+    return hash % zip::consts::NUM_ZIPKAT_SHARDS;
+
 }
 
 } // namespace meerkatir

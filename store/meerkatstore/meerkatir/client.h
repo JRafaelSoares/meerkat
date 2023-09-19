@@ -65,6 +65,8 @@ public:
     std::vector<int> Stats();
     uint64_t ClientId() { return client_id; }
 
+
+
 public:
     // Returns the underlying read and write set.
     const Transaction& GetTransaction() const { return txn; }
@@ -73,7 +75,8 @@ private:
     zip::network::buffer& ZiplogBuffer() { return ziplogBuffer.front(); }
 
     int Prepare(yield_t yield);
-
+    // Consistent hashing function
+    unsigned long getShard(std::string key);
 private:
     // Unique ID for this client.
     const uint64_t client_id;
@@ -102,6 +105,16 @@ private:
 
     /** signal to stop waiting for initial setup */
     std::atomic<bool> stop_setup_ = false;
+
+    /** Get thread assigned to this client */
+    unsigned int zipkat_get_dest_;
+
+    /** Replica id the client will stick to */
+    unsigned int sticky_replica_;
+
+    /** current client's get receive queue */
+    zip::network::recv_queue zipkat_get_recv_queue_;
+
 
 #ifdef ZIP_MEASURE
     hdr_histogram* hist_get;
