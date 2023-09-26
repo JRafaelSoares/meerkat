@@ -5,8 +5,8 @@ echo $BASEDIR
 USER="jp2585"
 TARGET_PATH=/home/$USER/build/
 CODEBASE=$BASEDIR/..
-EXEC_PATH=/home/$USER/project/
-ZIPLOG_EXEC_PATH=/home/$USER/project/third_party/ziplog/build
+EXEC_PATH=/home/$USER/zipkatEiger/zipkat
+ZIPLOG_EXEC_PATH=/home/$USER/zipkatEiger/zipkat/third_party/ziplog/build
 # It reads the servers to which servers will it execute from init_servers
 # And it executes rsync (basically copy the files) from the current server to the designated servers
 

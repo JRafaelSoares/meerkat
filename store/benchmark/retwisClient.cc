@@ -118,8 +118,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         client->Begin();
 
         // Decide which type of retwis transaction it is going to be.
-        ttype = 4;
-        //ttype = rand() % 100;
+        //ttype = 1;
+        ttype = rand() % 100;
         //ttype = 30;
 
         if (ttype < 5) {
@@ -130,12 +130,12 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             sort(keyIdx.begin(), keyIdx.end());
 
             int idx = keyIdx[0];
-            /*
+
             if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
-             */
+
 
             for (int i = 0; i < 3 && status; i++) {
                 int idx = keyIdx[i];
@@ -251,7 +251,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     std::cout << "RetwisClient client-" << global_thread_id << " done\n";
 }
 
-void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manager_ziplog, zip::network::manager* manager_zipkat) {
+void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manager) {
     // create the client fibers
     boost::fibers::fiber client_fibers[FLAGS_numClientFibers];
 
@@ -265,11 +265,11 @@ void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manag
     std::uniform_int_distribution<> distr(0, zip::consts::NUM_SHARDS-1); // define the range
 
 
-    auto ziplogClient = std::make_shared<zip::client::client>(*manager_ziplog, kOrderAddr, ziplog_id, distr(gen) , cpu_id, FLAGS_ziplogClientRate);
+    auto ziplogClient = std::make_shared<zip::client::client>(*manager, kOrderAddr, ziplog_id, distr(gen) , cpu_id, FLAGS_ziplogClientRate);
 
     for (int i = 0; i < FLAGS_numClientFibers; i++) {
         boost::fibers::fiber f(
-            client_fiber_func, ziplog_id * FLAGS_numClientFibers + i, ziplogClient, manager_zipkat);
+            client_fiber_func, ziplog_id * FLAGS_numClientFibers + i, ziplogClient, manager);
         client_fibers[i] = std::move(f);
     }
 
@@ -327,13 +327,11 @@ int main(int argc, char **argv) {
 //    const auto ziplog_id = FLAGS_nhost * FLAGS_numClientThreads;
 //    const auto cpu_id = 1;
     std::vector<std::unique_ptr<zip::network::manager>> managers_ziplog;
-    std::vector<std::unique_ptr<zip::network::manager>> managers_zipkat;
 
     std::vector<std::thread> client_thread_arr(FLAGS_numClientThreads);
     const auto id_base = FLAGS_nhost * FLAGS_numClientThreads;
     for (size_t i = 0; i < FLAGS_numClientThreads; i++) {
         managers_ziplog.emplace_back(std::make_unique<zip::network::manager>(zip::consts::rdma::DEFAULT_DEVICE, zip::consts::rdma::DEFAULT_PORT, zip::consts::rdma::DEFAULT_GID));
-        managers_zipkat.emplace_back(std::make_unique<zip::network::manager>(zip::consts::rdma::DEFAULT_DEVICE, zip::consts::rdma::DEFAULT_PORT, zip::consts::rdma::DEFAULT_GID));
 
         // *2 for using the core of the same NUMA, *2 again because one ziplog client uses one cores
 #ifdef ZIPKAT_SEPARATE_THREAD
@@ -356,7 +354,7 @@ int main(int argc, char **argv) {
         ziplog_core = 16 + 2 * i + 1; //2 * i + 1;
         txn_core = 2 * i + 1; //16 + 2 * i + 1;
 #endif
-        client_thread_arr[i] = std::thread(client_thread_func, id_base + i, ziplog_core, managers_ziplog.back().get(), managers_zipkat.back().get());
+        client_thread_arr[i] = std::thread(client_thread_func, id_base + i, ziplog_core, managers_ziplog.back().get());
         zip::util::pin_thread(client_thread_arr[i], txn_core);
         // client_thread_arr[i] = std::thread(client_fiber_func, i, ziplogClient);
         // uint8_t idx = i/2 + (i % 2) * 12;

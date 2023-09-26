@@ -1,6 +1,6 @@
 from collections import defaultdict
-from meerkat_benchmarks import (
-    Parameters, ParametersAndResult, parse_args, run_suite, ziplog_order_servers, ziplog_storage_servers, clients)
+from meerkat_benchmarks_local import (
+    Parameters, ParametersAndResult, parse_args, run_suite, ziplog_order_servers, ziplog_storage_servers, clients, zipkat_storage_servers)
 from sheets_query import header
 import benchmark
 
@@ -26,6 +26,8 @@ def main(args):
         client_cpus=None,
         subscriber_cpus=None,
         get_cpus=None,
+        zipkat_subscriber_cpus=None,
+        zipkat_storage_binary=args.zipkat_storage_binary,
         client_binary=args.client_binary,
         client_rate=None,
 #        benchmark_duration_seconds=15,
@@ -55,7 +57,7 @@ def main(args):
     #rate = 204800
     #rate = 409600
     #base_num_keys = 500000
-    base_num_keys = 10
+    base_num_keys = 100
 
     all_get_cpus = "0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62"
     parameters_list = [
@@ -65,6 +67,7 @@ def main(args):
           client_cpus=client_cpus,
           subscriber_cpus=subscriber_cpus,
           get_cpus=get_cpus,
+          zipkat_subscriber_cpus = zipkat_subscriber_cpus,
           num_keys = num_keys,
           num_client_machines = num_client_machines,
           num_threads_per_client = num_threads_per_client,
@@ -81,11 +84,13 @@ def main(args):
            client_cpus,
            subscriber_cpus,
            get_cpus,
+           zipkat_subscriber_cpus,
            num_keys,
            num_client_machines,
            num_threads_per_client,
            num_fibers_per_client_thread,
-           client_rate) in [
+           client_rate,
+           ) in [
                                        #(1, "1,3,5,7,9,33,35,37,39,41", "11,13,15,17,19,21,23,25,27,29,43,45,47,49,51,53,55,57,59,61", "0,2,4,6,8,10,12,14,32,34,36,38,40,42,44,46", 7 * base_num_keys, 1, 1, 1, 25600),
                                        #(1, "1,3,5,7,9,33,35,37,39,41", "11,13,15,17,19,21,23,25,27,29,43,45,47,49,51,53,55,57,59,61", "0,2,4,6,8,10,12,14,32,34,36,38,40,42,44,46", 7 * base_num_keys, 10, 8, 1, 25600),
 
@@ -115,7 +120,15 @@ def main(args):
                                        #(1, "1,3,5,7,9,33,35,37,39,41", "11,13,15,17,19,21,23,25,27,29,43,45,47,49,51,53,55,57,59,61", "0,2,4,6,8,10,12,14,32,34,36,38,40,42,44,46", 8 * base_num_keys, 4, 5, 5, 102400),
                                        #(1, "1,3,5,7,9,33,35,37,39,41", "11,13,15,17,19,21,23,25,27,29,43,45,47,49,51,53,55,57,59,61", "0,2,4,6,8,10,12,14,32,34,36,38,40,42,44,46", 4 * base_num_keys, 2, 5, 5, 102400),
                                        # TEST TEST
-                                        (1, "2", "3", "4", base_num_keys, 2, 1, 1, 1000)
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 1, 1, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 1, 2, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 1, 4, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 2, 1, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 2, 2, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 2, 4, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 4, 1, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 4, 2, 10000),
+                                        (1, "2", "3", "4", "5", base_num_keys, 1, 4, 4, 10000)
                                        # serialization perf debug
                                        #(1, "1,3,5,7,9,33,35,37,39,41,31,63,48,50,52,54,56,58,60,62,11,13,43,45,0,2,44,46,15,17,47,49,19,21,59,61,4,6,40,42,16,18,20,22,24,26,28,30,23,25,27,29,51,53,55,57", "", "8,10,12,14,32,34,36,38", 12 * base_num_keys, 6, 5, 5, 51200),
                                        #(4, 4 * 500000, 4, 8, 1),
@@ -141,10 +154,7 @@ def main(args):
     # Run the suite.
     suite_dir = benchmark.SuiteDirectory(args.suite_directory, 'e1_and_e2')
     suite_dir.write_dict('args.json', vars(args))
-    print(clients())
-    print(ziplog_order_servers())
-    print(ziplog_storage_servers())
-    run_suite(suite_dir, parameters_list, clients(), ziplog_order_servers(), ziplog_storage_servers())
+    run_suite(suite_dir, parameters_list, clients(), ziplog_order_servers(), ziplog_storage_servers(), zipkat_storage_servers())
 
 if __name__ == '__main__':
     main(parse_args())

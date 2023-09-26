@@ -38,8 +38,10 @@ Parameters = namedtuple('Parameters', [
     'ziplog_order_port',
     'ziplog_order_cpus',
     'ziplog_storage_binary',
+    'zipkat_storage_binary',
     'client_cpus',
     'subscriber_cpus',
+    'zipkat_subscriber_cpus',
     'get_cpus',
 
     # Client parameters. #######################################################
@@ -123,7 +125,7 @@ def clients():
         #RemoteHost('10.100.5.23') : {'phys_port'  : 0}, # rhinoceros-1g
         #RemoteHost('10.100.5.25') : {'phys_port'  : 0}, # sloth-1g
         RemoteHost('192.168.99.21') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.22') : {'phys_port'  : 0},
+        #RemoteHost('192.168.99.22') : {'phys_port'  : 0},
         #RemoteHost('192.168.99.20') : {'phys_port'  : 0},
         #RemoteHost('192.168.99.16') : {'phys_port'  : 0},
         #RemoteHost('192.168.99.22') : {'phys_port'  : 0},
@@ -170,6 +172,17 @@ def ziplog_order_servers():
     return ret
 
 def ziplog_storage_servers():
+    return {
+        #RemoteHost('192.168.99.22') : {'phys_port'  : 0},
+        #RemoteHost('192.168.99.28') : {'phys_port'  : 0},
+        #RemoteHost('192.168.99.29') : {'phys_port'  : 0},
+        #RemoteHost('192.168.99.30') : {'phys_port'  : 0},
+        #RemoteHost('192.168.99.31') : {'phys_port'  : 0},
+        RemoteHost('192.168.99.21') : {'phys_port'   : 0}
+        #RemoteHost('192.168.99.16') : {'phys_port'  : 0},
+    }
+
+def zipkat_storage_servers():
     return {
         #RemoteHost('192.168.99.22') : {'phys_port'  : 0},
         #RemoteHost('192.168.99.28') : {'phys_port'  : 0},
@@ -421,7 +434,63 @@ def start_ziplog_storages(ziplog_storage_servers, parameters, bench_dir):
     print('Waiting for ziplog storage servers to start.')
     time.sleep(2 + parameters.num_keys / 300000)
 
-def kill_servers(ziplog_order_servers, ziplog_storage_servers):
+def start_zipkat_storages(zipkat_storage_servers, parameters, bench_dir):
+    shard_id = 0
+
+    # Start the servers.
+    print(boxed('Starting zipkat storage servers.'))
+    tasks = []
+    # command to enable core dump on the server in case of SIGSEGV
+    core_dump_cmd = [
+        "ulimit -c unlimited;",
+        #"sudo sysctl -w kernel.core_pattern=/tmp/core-%e.%p.%h.%t; ",
+    ]
+    # command to increase the number of fds we can open
+    max_open_files_cmd = [
+        "ulimit -n 16384;",
+    ]
+    # command to free buff/cache
+    drop_caches_cmd = [
+        #"sudo bash -c \"echo 3 > /proc/sys/vm/drop_caches\"; "
+    ]
+    for (replica_index, server) in enumerate(sorted(list(zipkat_storage_servers.keys()), key=lambda h: h.hostname)[:2*parameters.f + 1]):
+        cmd = [
+            #"sudo",
+            #"numactl -m 1",
+            parameters.zipkat_storage_binary,
+            "--order", ziplog_order_ips()[0] + ":" + str(parameters.ziplog_order_port),
+            "--shard_id", str(shard_id),
+            "--replica_id", str(replica_index),
+            "--server", str(6668),
+            #            "--subscriber_cpus", str(parameters.subscriber_cpus),
+            #            "--get_cpus", str(parameters.get_cpus),
+            "--num_keys", str(parameters.num_keys),
+            "--get_cpus", str(parameters.get_cpus),
+            "--sub_cpus", str(parameters.zipkat_subscriber_cpus)
+                       ]
+
+        # We capture the stdout and stderr of the servers using the trick
+        # outlined in [1]. pyrem has some support for capturing stdout and
+        # stderr as well, but it doesn't alway work.
+        #
+        # [1]: https://stackoverflow.com/a/692407/3187068
+        cmd.append(('> >(tee /mnt/log/zipkat_storage_{0}_out.txt) ' +
+                    '2> >(tee /mnt/log/zipkat_storage_{0}_err.txt >&2)')
+                   .format(server.hostname))
+
+        # Record (and print) the command we run, so that we can re-run it later
+        # while we debug.
+        print('Running {} on {}.'.format(' '.join(core_dump_cmd + max_open_files_cmd + cmd), server.hostname))
+        bench_dir.write_string(
+            'zipkat_storage_{}_cmd.txt'.format(server.hostname),
+            ' '.join(cmd) + '\n')
+        tasks.append(server.run(drop_caches_cmd + core_dump_cmd + max_open_files_cmd + cmd, quiet=True))
+    parallel_server_tasks = Parallel(tasks, aggregate=True)
+    parallel_server_tasks.start()
+    print('Waiting for zipkat storage servers to start.')
+    time.sleep(2 + parameters.num_keys / 300000)
+
+def kill_servers(ziplog_order_servers, ziplog_storage_servers, zipkat_storage_servers):
     # Kill ziplog orders
     kill_tasks = []
     for server in list(ziplog_order_servers.keys()):
@@ -450,6 +519,19 @@ def kill_servers(ziplog_order_servers, ziplog_storage_servers):
     parallel_kill_tasks = Parallel(kill_tasks, aggregate=True)
     parallel_kill_tasks.start(wait=True)
 
+    # Kill zipkat storages
+    kill_tasks = []
+    for server in list(zipkat_storage_servers.keys()):
+        cmd = [
+            "killall -9 zipkat",
+        ]
+
+        # Record (and print) the command we run, so that we can re-run it later
+        # while we debug.
+        print('Running {} on {}.'.format(' '.join(cmd), server.hostname))
+        kill_tasks.append(server.run(cmd))
+    parallel_kill_tasks = Parallel(kill_tasks, aggregate=True)
+    parallel_kill_tasks.start(wait=True)
 def kill_clients(ziplog_clients, parameters):
     # We can't use PyREM's stop function because we need sudo priviledges
     #parallel_server_tasks.stop()
@@ -466,17 +548,17 @@ def kill_clients(ziplog_clients, parameters):
     parallel_kill_tasks = Parallel(kill_tasks, aggregate=True)
     parallel_kill_tasks.start(wait=True)
 
-def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_servers, parameters):
+def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_servers, zipkat_storage_servers, parameters):
     # Clear the clients' and servers' out and err files in /mnt/log.
     print(boxed('Clearing *_out.txt and *_err.txt'))
     clear_out_files = Parallel([host.run(['rm', '/mnt/log/*_out.txt'])
                                 for host in list(clients.keys()) + list(ziplog_order_servers.keys()) +
-                                            list(ziplog_storage_servers)],
+                                            list(ziplog_storage_servers) + list(zipkat_storage_servers)],
                                 aggregate=True)
     clear_out_files.start(wait=True)
     clear_err_files = Parallel([host.run(['rm', '/mnt/log/*_err.txt'])
                                 for host in list(clients.keys()) + list(ziplog_order_servers.keys()) +
-                                            list(ziplog_storage_servers)],
+                                            list(ziplog_storage_servers) + list(zipkat_storage_servers)],
                                 aggregate=True)
     clear_err_files.start(wait=True)
 
@@ -495,6 +577,7 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
     # Start the servers
     start_ziplog_order(ziplog_order_servers, parameters, bench_dir)
     start_ziplog_storages(ziplog_storage_servers, parameters, bench_dir)
+    start_zipkat_storages(zipkat_storage_servers, parameters, bench_dir)
 
     # Wait for the servers to start.
     #print('Waiting for all servers to start.')
@@ -566,7 +649,7 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
 
     # Kill the servers.
     print(boxed('Killing servers.'))
-    kill_servers(ziplog_order_servers, ziplog_storage_servers)
+    kill_servers(ziplog_order_servers, ziplog_storage_servers, zipkat_storage_servers)
     bench_dir.write_string('servers_killed_time.txt', str(datetime.datetime.now()))
 
     # Copy stdout and stderr files over.
@@ -615,7 +698,7 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
 
     return results
 
-def run_suite(suite_dir, parameters_list, clients, ziplog_order_servers, ziplog_storage_servers):
+def run_suite(suite_dir, parameters_list, clients, ziplog_order_servers, ziplog_storage_servers, zipkat_storage_servers):
     # Store the list of parameters.
     parameters_strings = '\n'.join(str(p) for p in parameters_list)
     suite_dir.write_string('parameters_list.txt', parameters_strings)
@@ -634,7 +717,7 @@ def run_suite(suite_dir, parameters_list, clients, ziplog_order_servers, ziplog_
                 bench_dir.write_string('parameters.txt', str(parameters))
 
                 result = run_benchmark(bench_dir, clients, ziplog_order_servers,
-                                       ziplog_storage_servers, parameters)
+                                       ziplog_storage_servers, zipkat_storage_servers, parameters)
                 if result:
                     csv_writer.writerow(ParametersAndResult(*(parameters + result)))
                     f.flush()
@@ -652,7 +735,9 @@ def main(args):
         server_binary=args.server_binary,
         client_cpus="1",
         subscriber_cpus="3",
-        get_cpus="0",
+        get_cpus="4",
+        sub_cpus="5",
+        zipkat_binary=args.zipkat_binary,
         client_binary=args.client_binary,
         client_rate=100000,
         benchmark_duration_seconds=60,
@@ -728,6 +813,11 @@ def parser():
         type=str,
         required=True,
         help='The ziplog storage binary.')
+    parser.add_argument(
+        '--zipkat_storage_binary',
+        type=str,
+        required=True,
+        help='The zipkat storage binary.')
     parser.add_argument(
         '--client_binary',
         type=str,
