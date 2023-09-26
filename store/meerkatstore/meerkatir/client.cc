@@ -239,6 +239,11 @@ int Client::Prepare(yield_t yield)
 
     std::set<unsigned long> shards;
     for (auto x : txn.getWriteSet()){
+        logger.info("Shard id: ", getShard(x.first));
+        shards.insert(getShard(x.first));
+    }
+    for (auto x : txn.getReadSet()){
+        logger.info("Shard id: ", getShard(x.first));
         shards.insert(getShard(x.first));
     }
     req.zipkat_acks = shards.size();
