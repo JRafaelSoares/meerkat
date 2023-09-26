@@ -237,6 +237,11 @@ int Client::Prepare(yield_t yield)
     txn.serialize((char*)commit_req->data);
     //txn.serialize(buf);
 
+    std::set<unsigned long> shards;
+    for (auto x : txn.getWriteSet()){
+        shards.insert(getShard(x.first));
+    }
+    req.zipkat_acks = shards.size();
     req.data_length = commit_req->length();
 
     Assert(req.length() < ZiplogBuffer().length());
