@@ -134,7 +134,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
     // Send the GET operation.
     zip::client::client::zipkat_get_request request;
     request.buffer = &ZiplogBuffer();
-    request.timestamp = -1;
+    request.timestamp = std::numeric_limits<uint64_t>::max();
     auto& req = request.buffer->as<zip::api::zipkat_get>();
     const auto leng = key.length();
     req.message_type = zip::api::ZIPKAT_GET;
@@ -152,7 +152,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
     Assert(ziplogClient.get());
     ziplogClient->zipkat_get(request);
 
-    while (request.timestamp.load(std::memory_order_acquire) == -1) {
+    while (request.timestamp.load(std::memory_order_acquire) == std::numeric_limits<uint64_t>::max()) {
 /*
 #if ZIP_MEASURE
     auto start2 = std::chrono::high_resolution_clock::now();
@@ -220,7 +220,7 @@ int Client::Prepare(yield_t yield)
     Debug("PREPARE [%lu, %lu] ", client_id, t_id);
     zip::client::client::request request;
     request.buffer = &ZiplogBuffer();
-    request.response.store(-1, std::memory_order_release);
+    request.response.store(std::numeric_limits<uint64_t>::max(), std::memory_order_release);
 
     size_t txnLen = txn.serializedSize();
     auto& req = ZiplogBuffer().as<zip::api::storage_insert_after>();
@@ -250,7 +250,7 @@ int Client::Prepare(yield_t yield)
     Assert(req.length() < ZiplogBuffer().length());
     Assert(ziplogClient.get());
     ziplogClient->insert_after(request);
-    while (request.response.load(std::memory_order_relaxed) == -1) {
+    while (request.response.load(std::memory_order_relaxed) == std::numeric_limits<uint64_t>::max()) {
 /*
 #if ZIP_MEASURE
     auto start2 = std::chrono::high_resolution_clock::now();
