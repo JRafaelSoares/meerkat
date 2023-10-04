@@ -553,12 +553,12 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
     print(boxed('Clearing *_out.txt and *_err.txt'))
     clear_out_files = Parallel([host.run(['rm', '/mnt/log/*_out.txt'])
                                 for host in list(clients.keys()) + list(ziplog_order_servers.keys()) +
-                                            list(ziplog_storage_servers) + list(zipkat_storage_servers)],
+                                            list(ziplog_storage_servers.keys()) + list(zipkat_storage_servers.keys())],
                                 aggregate=True)
     clear_out_files.start(wait=True)
     clear_err_files = Parallel([host.run(['rm', '/mnt/log/*_err.txt'])
                                 for host in list(clients.keys()) + list(ziplog_order_servers.keys()) +
-                                            list(ziplog_storage_servers) + list(zipkat_storage_servers)],
+                                            list(ziplog_storage_servers.keys()) + list(zipkat_storage_servers.keys())],
                                 aggregate=True)
     clear_err_files.start(wait=True)
 
@@ -654,7 +654,7 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
 
     # Copy stdout and stderr files over.
     print(boxed('Copying *_out.txt and *_err.txt.'))
-    for host in list(ziplog_order_servers.keys()) + list(ziplog_storage_servers.keys()) + list(clients.keys()):
+    for host in list(ziplog_order_servers.keys()) + list(ziplog_storage_servers.keys()) + list(clients.keys()) + list(zipkat_storage_servers.keys()):
         subprocess.call([
             'scp',
             '{}:/mnt/log/*_out.txt'.format(host.hostname),

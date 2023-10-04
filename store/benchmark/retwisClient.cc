@@ -120,7 +120,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         // Decide which type of retwis transaction it is going to be.
         //ttype = 1;
         ttype = rand() % 100;
-        //ttype = 30;
+        //ttype = 1;
 
         if (ttype < 5) {
             // 5% - Add user transaction. 1,3
@@ -131,11 +131,11 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
             int idx = keyIdx[0];
 
+
             if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
-
 
             for (int i = 0; i < 3 && status; i++) {
                 int idx = keyIdx[i];
@@ -259,13 +259,8 @@ void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manag
     printf("ziplog ziplog id=%d, cpu_id=%d, client_rate=%lu\n", ziplog_id, cpu_id, FLAGS_ziplogClientRate);
     //std::shared_ptr<zip::client::client> ziplogClient =nullptr;
     //Get random shard to connect to
-    // TODO- Make this distribtion more even in the future
-    std::random_device rd; // obtain a random number from hardware
-    std::mt19937 gen(rd()); // seed the generator
-    std::uniform_int_distribution<> distr(0, zip::consts::NUM_SHARDS-1); // define the range
 
-
-    auto ziplogClient = std::make_shared<zip::client::client>(*manager, kOrderAddr, ziplog_id, distr(gen) , cpu_id, FLAGS_ziplogClientRate);
+    auto ziplogClient = std::make_shared<zip::client::client>(*manager, kOrderAddr, ziplog_id, ziplog_id % zip::consts::NUM_SHARDS, cpu_id, FLAGS_ziplogClientRate);
 
     for (int i = 0; i < FLAGS_numClientFibers; i++) {
         boost::fibers::fiber f(
