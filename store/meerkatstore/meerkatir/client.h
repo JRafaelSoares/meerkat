@@ -58,7 +58,11 @@ public:
 
     // Overriding functions from ::Client.
     void Begin();
+#ifdef EIGER_ZIPKAT
+    int Get(const std::string &key, int idx, std::string &value, yield_t yield, uint64_t& lower_bound, uint64_t& upper_bound);
+#else
     int Get(const std::string &key, int idx, std::string &value, yield_t yield);
+#endif
     int Put(const std::string &key, int idx, const std::string &value);
     bool Commit(yield_t yield);
     void Abort();
@@ -70,6 +74,10 @@ public:
 public:
     // Returns the underlying read and write set.
     const Transaction& GetTransaction() const { return txn; }
+
+#ifdef EIGER_ZIPKAT
+    const bool GetValidationFlag() { return txn.requiresValidation(); }
+#endif
 
 private:
     zip::network::buffer& ZiplogBuffer() { return ziplogBuffer.front(); }

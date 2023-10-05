@@ -113,7 +113,11 @@ Client::Begin()
 }
 
 /* Returns the value corresponding to the supplied key. */
+#ifdef EIGER_ZIPKAT
+int Client::Get(const string &key, int idx, string &value, yield_t yield, uint64_t& lower_bound, uint64_t& upper_bound)
+#else
 int Client::Get(const string &key, int idx, string &value, yield_t yield)
+#endif
 {
 #if 0
     Debug("GET [%lu, %lu : %s]", client_id, t_id, key.c_str());
@@ -131,10 +135,16 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
         return REPLY_OK;
     }
 
-    // Send the GET operation.
+#ifdef EIGER_ZIPKAT
+    zip::client::client::zipkat_eiger_get_request request;
+    request.latest_gsn = std::numeric_limits<uint64_t>::max();
+#else
     zip::client::client::zipkat_get_request request;
+#endif
+    // Send the GET operation.
     request.buffer = &ZiplogBuffer();
     request.timestamp = std::numeric_limits<uint64_t>::max();
+
     auto& req = request.buffer->as<zip::api::zipkat_get>();
     const auto leng = key.length();
     req.message_type = zip::api::ZIPKAT_GET;
@@ -153,7 +163,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
     ziplogClient->zipkat_get(request);
 
     while (request.timestamp.load(std::memory_order_acquire) == std::numeric_limits<uint64_t>::max()) {
-/*
+
 #if ZIP_MEASURE
     auto start2 = std::chrono::high_resolution_clock::now();
 #endif
@@ -170,15 +180,16 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
         std::cerr << "Client-yield (" << client_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;;
     }
 #endif
-*/
+
             yield();
     }
 
     const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
+
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_get, zip::util::time_in_us(end - start));
-    if (++hdr_count_get == 10000) {                     
+    if (++hdr_count_get == 10000) {
         hdr_count_get = 0;
         auto lat_50 = hdr_value_at_percentile(hist_get, 50);
         auto lat_99 = hdr_value_at_percentile(hist_get, 99);
@@ -187,6 +198,35 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
         std::cerr << "Client-get (" << client_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;;
     }
 #endif
+#ifdef EIGER_ZIPKAT
+    const auto latest_gsn = request.latest_gsn.load(std::memory_order_relaxed);
+    if (timestamp > latest_gsn){
+        std::cout << "Timestamp: " << to_string(timestamp) << " Latest gsn " << to_string(latest_gsn) << std::endl; }
+    ASSERT(timestamp <= latest_gsn);
+    if (timestamp != zip::api::zipkat_get_response::kKeyNotFound) {
+        // Checks if the value is out of bound
+        if (latest_gsn < lower_bound || timestamp > upper_bound){
+            // Must be verified in the end
+            //logger.info("[", client_id, "] ", key.c_str(), " interval was in bounds: current interval: [", lower_bound, ",", upper_bound, "%], obtained interval[", timestamp, ",", latest_gsn, "]");
+            txn.setValidationFlag();
+        } else {
+            // We only update the interval if it is within bounds
+            lower_bound  = std::max(lower_bound, timestamp);
+            upper_bound  = std::min(upper_bound, latest_gsn);
+            ASSERT(lower_bound <= upper_bound);
+        }
+        //logger.info("[", client_id, "] ", key.c_str(), " interval was in bounds: current interval: [", lower_bound, ",", upper_bound, "%], obtained interval[", timestamp, ",", latest_gsn, "]");
+
+
+
+        Debug("[%lu] Adding [%s] with ts %lu", client_id, key.c_str(), timestamp);
+        txn.addReadSet(key, idx, timestamp);
+        return REPLY_OK;
+    } else {
+        Debug("[%lu] %s not found", client_id, key.c_str());
+        return REPLY_FAIL;
+    }
+#else
     if (timestamp != zip::api::zipkat_get_response::kKeyNotFound) {
         Debug("[%lu] Adding [%s] with ts %lu", client_id, key.c_str(), timestamp);
         txn.addReadSet(key, idx, timestamp);
@@ -195,6 +235,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
         Debug("[%lu] %s not found", client_id, key.c_str());
         return REPLY_FAIL;
     }
+#endif
 #endif
 }
 
@@ -207,6 +248,9 @@ int Client::Put(const string &key, int idx, const string &value)
     Debug("PUT [%lu, %lu : %s]", client_id, t_id, key.c_str());
     // Update the write set.
     txn.addWriteSet(key, idx, value);
+#ifdef EIGER_ZIPKAT
+    txn.setValidationFlag();
+#endif
     return REPLY_OK;
 #endif
 }
@@ -286,8 +330,18 @@ bool Client::Commit(yield_t yield)
 #ifdef ZIP_MEASURE
     auto start = std::chrono::high_resolution_clock::now();
 #endif
-    int status = Prepare(yield);
+#ifdef EIGER_ZIPKAT
+    int status;
+    // A transaction may not need to validade (for example, a read transaction that is within the intervals)
+    if (txn.requiresValidation()) {
+        status = Prepare(yield);
+    } else {
+        status = REPLY_OK;
+    }
 
+#else
+    int status = Prepare(yield);
+#endif
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_commit, zip::util::time_in_us(end - start));

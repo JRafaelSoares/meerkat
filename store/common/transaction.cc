@@ -88,4 +88,7 @@ Transaction::clear()
     readSet.clear();
     writeSet.clear();
     keyIndexes.clear();
+#ifdef EIGER_ZIPKAT
+    clearValidationFlag();
+#endif
 }

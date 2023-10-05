@@ -40,6 +40,8 @@ struct measurement {
     timeval start;
     timeval end;
     bool status;
+    int tx_type;
+    bool skipped_validation;
 };
 constexpr size_t kNumMeasurement = 1000000;
 
@@ -117,10 +119,15 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         gettimeofday(&t1, NULL);
         client->Begin();
 
+#ifdef EIGER_ZIPKAT
+        // Interval bounds of Eiger protocol
+        uint64_t lower_bound = 0;
+        uint64_t upper_bound = std::numeric_limits<uint64_t>::max();
+#endif
         // Decide which type of retwis transaction it is going to be.
         //ttype = 1;
         ttype = rand() % 100;
-        //ttype = 1;
+        //ttype = 99;
 
         if (ttype < 5) {
             // 5% - Add user transaction. 1,3
@@ -131,8 +138,11 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
             int idx = keyIdx[0];
 
-
+#ifdef EIGER_ZIPKAT
+            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, lower_bound, upper_bound))) {
+#else
             if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+#endif
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
@@ -150,7 +160,11 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
             for (int i = 0; i < 2 && status; i++) {
                 int idx = keyIdx[i];
+#ifdef EIGER_ZIPKAT
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, lower_bound, upper_bound))) {
+#else
                 if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+#endif
                     Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                     status = false;
                 }
@@ -169,13 +183,17 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             //for (int i = 0; i < 1 && status; i++) {
             for (int i = 0; i < 3 && status; i++) {
                 int idx = keyIdx[i];
+#ifdef EIGER_ZIPKAT
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, lower_bound, upper_bound))) {
+#else
                 if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+#endif
                     Warning("Aborting due to %d %s %d", idx, keys[idx].c_str(), ret);
                     status = false;
                 }
                 client->Put(keys[idx], idx, v);
             }
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < 2 && status; i++) {
             //for (int i = 0; i < 5; i++) {
                 int idx = keyIdx[i+3];
                 //client->Put(keys[keyIdx[i]], v);
@@ -192,7 +210,11 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             sort(keyIdx.begin(), keyIdx.end());
             for (int i = 0; i < nGets && status; i++) {
                 int idx = keyIdx[i];
+#ifdef EIGER_ZIPKAT
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, lower_bound, upper_bound))) {
+#else
                 if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+#endif
                     Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                     status = false;
                 }
@@ -210,17 +232,26 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         //commitLatency += ((t2.tv_sec - t3.tv_sec)*1000000 + (t2.tv_usec - t3.tv_usec));
 
         // log only the transactions that finished in the interval we actually measure
-        if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup) &&
-            (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)) {
+        if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup)&&
+        (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)
+        ) {
             //sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d\n", ++nTransactions, t1.tv_sec,
             //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
             //long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
             //printf("client-%d, %lu %ld.%06ld %ld.%06ld %ld %d\n", global_thread_id, nTransactions, t1.tv_sec,
             //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
             if (nTransactions > results.size())
-                results.emplace_back(measurement{nTransactions, t1, t2, status});
+#ifdef EIGER_ZIPKAT
+                results.emplace_back(measurement{nTransactions, t1, t2, status, ttype, !client->GetValidationFlag()});
+#else
+                results.emplace_back(measurement{nTransactions, t1, t2, status, ttype, false});
+#endif
             else
-                results[nTransactions] = measurement {nTransactions + 1, t1, t2, status};
+#ifdef EIGER_ZIPKAT
+                results[nTransactions] = measurement {nTransactions + 1, t1, t2, status, ttype, !client->GetValidationFlag()};
+#else
+            results[nTransactions] = measurement {nTransactions + 1, t1, t2, status, ttype, false};
+#endif
             ++nTransactions;
         }
         gettimeofday(&t1, NULL);
@@ -234,8 +265,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             break;
         }
         const auto latency = (r.end.tv_sec - r.start.tv_sec)*1000000 + (r.end.tv_usec - r.start.tv_usec);
-        fprintf(fp, "%d %ld.%06ld %ld.%06ld %ld %d\n",
-            r.nTransaction, r.start.tv_sec, r.start.tv_usec, r.end.tv_sec, r.end.tv_usec, latency, r.status?1:0);
+        fprintf(fp, "%d %ld.%06ld %ld.%06ld %ld %d %d %d\n",
+            r.nTransaction, r.start.tv_sec, r.start.tv_usec, r.end.tv_sec, r.end.tv_usec, latency, r.status?1:0, r.tx_type, r.skipped_validation?1:0);
 
         if (r.status) {
             tCount++;
