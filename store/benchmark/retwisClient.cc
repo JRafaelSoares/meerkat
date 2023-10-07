@@ -253,8 +253,9 @@ void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manag
     boost::fibers::fiber client_fibers[FLAGS_numClientFibers];
 
     // Use cores of NUMA1.
-    printf("ziplog ziplog id=%d, cpu_id=%d, client_rate=%lu\n", ziplog_id, cpu_id, FLAGS_ziplogClientRate);
-    printf("%s", kOrderAddr.c_str());
+
+    printf("ziplog id=%d, cpu_id=%d, client_rate=%lu\n", ziplog_id, cpu_id, FLAGS_ziplogClientRate);
+
     auto ziplogClient = std::make_shared<zip::client::client>(
         *manager, kOrderAddr, ziplog_id, kZiplogShardId, cpu_id, FLAGS_ziplogClientRate);
     for (int i = 0; i < FLAGS_numClientFibers; i++) {
@@ -322,13 +323,32 @@ int main(int argc, char **argv) {
     const auto id_base = FLAGS_nhost * FLAGS_numClientThreads;
     for (size_t i = 0; i < FLAGS_numClientThreads; i++) {
         managers.emplace_back(std::make_unique<zip::network::manager>(zip::consts::rdma::DEFAULT_DEVICE, zip::consts::rdma::DEFAULT_PORT, zip::consts::rdma::DEFAULT_GID));
-        // *2 for using the core of the same NUMA, *2 again because one ziplog client uses one cores
-#ifdef ZIPKAT_SEPARATE_THREAD
-        client_thread_arr[i] = std::thread(client_thread_func, id_base + i, 3 * 2 * i + 1, managers.back().get());
-        zip::util::pin_thread(client_thread_arr[i], 3 * 2 * i + 5);
-#else
         int ziplog_core;
         int txn_core;
+#ifdef ZIPKAT_SEPARATE_THREAD
+
+#if 0
+        assert(FLAGS_numClientThreads <= 4); // Run with FLAGS_numClientThreads <= 4;
+        if (i < 2) {
+            // *2 for using the core of the same NUMA, *2 again because one ziplog client uses one cores
+            ziplog_core = 3 * 2 * i + 1;
+            txn_core = 3 * 2 * i + 5;
+        } else {
+            ziplog_core = 3 * 2 * (i - 2);
+            txn_core = 3 * 2 * (i - 2) + 4;
+        }
+#else
+        if (i < 4) {
+            // *2 for using the core of the same NUMA, *2 again because one ziplog client uses one cores
+            ziplog_core = 3 * 2 * i + 1;
+            txn_core = 3 * 2 * i + 5;
+        } else {
+            ziplog_core = 3 * 2 * (i - 3);
+            txn_core = 3 * 2 * (i - 3) + 4;
+        }
+#endif
+
+#else
         // TODO: use const for determining the 4, it's basically related to # of real (not hyper) cores on a machine.
 #if 1
         if (i < 4) {
@@ -343,12 +363,12 @@ int main(int argc, char **argv) {
         ziplog_core = 16 + 2 * i + 1; //2 * i + 1;
         txn_core = 2 * i + 1; //16 + 2 * i + 1;
 #endif
+#endif
         client_thread_arr[i] = std::thread(client_thread_func, id_base + i, ziplog_core, managers.back().get());
         zip::util::pin_thread(client_thread_arr[i], txn_core);
         // client_thread_arr[i] = std::thread(client_fiber_func, i, ziplogClient);
         // uint8_t idx = i/2 + (i % 2) * 12;
         // erpc::bind_to_core(client_thread_arr[i], 0, i);
-#endif
     }
     for (auto &thread : client_thread_arr) thread.join();
 

@@ -129,22 +129,13 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
 
     // Send the GET operation.
     zip::client::client::zipkat_get_request request;
-    request.buffer = &ZiplogBuffer();
     request.timestamp = -1;
-    auto& req = request.buffer->as<zip::api::zipkat_get>();
-    const auto leng = key.length();
-    req.message_type = zip::api::ZIPKAT_GET;
-    req.client_id = ziplogClient->client_id();
-    req.gsn = 0;
-    req.data_length = leng;
-    std::memcpy(req.key, key.data(), leng);
-    Assert(req.length() < ZiplogBuffer().length());
+    request.key = key;
 
-    static std::string empty;
     Assert(ziplogClient.get());
+#if 1
     ziplogClient->zipkat_get(request);
     while (request.timestamp.load(std::memory_order_acquire) == -1) {
-/*
 #if ZIP_MEASURE
     auto start2 = std::chrono::high_resolution_clock::now();
 #endif
@@ -161,15 +152,36 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
         std::cerr << "Client-yield (" << client_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;;
     }
 #endif
-*/
         yield();
     }
+#else
+    static std::chrono::nanoseconds wait(7);
+    auto begin = std::chrono::high_resolution_clock::now();
+    while (true) {
+        if (std::chrono::high_resolution_clock::now() - begin > wait) break;
+        yield();
+    }
+    txn.addReadSet(key, idx, 0);
+
+    auto end2 = std::chrono::high_resolution_clock::now();
+    hdr_record_value(hist_get, zip::util::time_in_us(end2 - start));
+    if (++hdr_count_get == 10000) {
+        hdr_count_get = 0;
+        auto lat_50 = hdr_value_at_percentile(hist_get, 50);
+        auto lat_99 = hdr_value_at_percentile(hist_get, 99);
+        auto lat_999 = hdr_value_at_percentile(hist_get, 99.9);
+        auto mean = hdr_mean(hist_get);
+        std::cerr << "Client-get (" << client_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;;
+    }
+
+    return REPLY_OK;
+#endif
 
     const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_get, zip::util::time_in_us(end - start));
-    if (++hdr_count_get == 10000) {                     
+    if (++hdr_count_get == 10000) {
         hdr_count_get = 0;
         auto lat_50 = hdr_value_at_percentile(hist_get, 50);
         auto lat_99 = hdr_value_at_percentile(hist_get, 99);
@@ -271,7 +283,7 @@ bool Client::Commit(yield_t yield)
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_commit, zip::util::time_in_us(end - start));
-    if (++hdr_count_commit == 10000) {                     
+    if (++hdr_count_commit == 10000) {
         hdr_count_commit = 0;
         auto lat_50 = hdr_value_at_percentile(hist_commit, 50);
         auto lat_99 = hdr_value_at_percentile(hist_commit, 99);
