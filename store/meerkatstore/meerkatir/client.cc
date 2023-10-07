@@ -178,6 +178,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
 #endif
 
     const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
+    const auto promise = request.promise.load(std::memory_order_relaxed);
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_get, zip::util::time_in_us(end - start));
