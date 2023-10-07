@@ -46,6 +46,7 @@ enum TransactionStatus {
 // of these structures:
 struct read_t {
         uint64_t timestamp;
+        uint64_t promise;
         char key[64];
 };
 

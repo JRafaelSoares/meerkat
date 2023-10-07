@@ -16,8 +16,8 @@ class Timestamp
 {
 
 public:
-    Timestamp() : timestamp(0), id(0) { };
-    Timestamp(uint64_t t) : timestamp(t), id(0) { };
+    Timestamp() : timestamp(0), promise(0), id(0) { };
+    Timestamp(uint64_t t) : timestamp(t), promise(0), id(0) { };
     Timestamp(uint64_t t, uint64_t i) : timestamp(t), id(i) { };
     ~Timestamp() { };
     void operator= (const Timestamp &t);
@@ -31,10 +31,12 @@ public:
     bool isValid() const;
     uint64_t getID() const { return id; };
     uint64_t getTimestamp() const { return timestamp; };
+    uint64_t getPromise() const { return timestamp; };
     void setTimestamp(uint64_t t) { timestamp = t; };  
 
 private:
 	uint64_t timestamp;
+    uint64_t promise;
 	uint64_t id;
 };
 

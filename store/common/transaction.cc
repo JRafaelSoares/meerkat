@@ -64,6 +64,7 @@ void Transaction::serialize(char *reqBuf) const {
     auto *read_ptr = reinterpret_cast<read_t *> (reqBuf);
     for (auto read : readSet) {
         read_ptr->timestamp = read.second.getTimestamp();
+        read_ptr->promise = read.second.getPromise();
         std::memcpy(read_ptr->key, read.first.c_str(), 64);
         read_ptr++;
     }
