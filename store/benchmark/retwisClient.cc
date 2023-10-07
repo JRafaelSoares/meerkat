@@ -40,6 +40,7 @@ struct measurement {
     timeval start;
     timeval end;
     bool status;
+    int ttype;
 };
 constexpr size_t kNumMeasurement = 1000000;
 
@@ -215,9 +216,9 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             //printf("client-%d, %lu %ld.%06ld %ld.%06ld %ld %d\n", global_thread_id, nTransactions, t1.tv_sec,
             //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
             if (nTransactions > results.size())
-                results.emplace_back(measurement{nTransactions, t1, t2, status});
+                results.emplace_back(measurement{nTransactions, t1, t2, status, ttype});
             else
-                results[nTransactions] = measurement {nTransactions + 1, t1, t2, status};
+                results[nTransactions] = measurement {nTransactions + 1, t1, t2, status, ttype};
             ++nTransactions;
         }
         gettimeofday(&t1, NULL);
@@ -231,8 +232,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             break;
         }
         const auto latency = (r.end.tv_sec - r.start.tv_sec)*1000000 + (r.end.tv_usec - r.start.tv_usec);
-        fprintf(fp, "%d %ld.%06ld %ld.%06ld %ld %d\n",
-            r.nTransaction, r.start.tv_sec, r.start.tv_usec, r.end.tv_sec, r.end.tv_usec, latency, r.status?1:0);
+        fprintf(fp, "%d %ld.%06ld %ld.%06ld %ld %d %d\n",
+            r.nTransaction, r.start.tv_sec, r.start.tv_usec, r.end.tv_sec, r.end.tv_usec, latency, r.status?1:0, r.ttype);
 
         if (r.status) {
             tCount++;

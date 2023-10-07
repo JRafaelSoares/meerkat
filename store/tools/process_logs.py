@@ -45,7 +45,7 @@ BenchmarkResult = collections.namedtuple('BenchmarkResult', [
     'p999_latency_failure',
     'follow_txn_avg_latency_success',
     'tweet_txn_avg_latency_success',
-
+    'read_txn_avg_latency_success',
     # Extra.
     'extra_all',
     'extra_success',
@@ -117,13 +117,11 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
                 continue
 
             parts = line.strip().split()
-            assert len(parts) == 5 or len(parts) == 7, parts
+            assert len(parts) == 6 or len(parts) == 7, parts
 
             if len(parts) == 7:
-                txn_type = int(parts[5])
                 extra = int(parts[6])
             else:
-                txn_type = -1
                 extra = 0
 
             log_entries.append(LogEntry(
@@ -132,7 +130,7 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
                 end_time_sec=float(parts[2]),
                 latency_micros=int(parts[3]),
                 success=bool(int(parts[4])),
-                txn_type=txn_type,
+                txn_type=int(parts[5]),
                 extra=extra,
             ))
 
@@ -149,6 +147,7 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
     failure_latencies = []
     follow_txn_success_latencies = []
     tweet_txn_success_latencies = []
+    read_txn_success_latencies = []
 
     all_num_extra = 0.0
     success_num_extra = 0.0
@@ -171,6 +170,8 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
                 follow_txn_success_latencies.append(entry.latency_micros)
             if entry.txn_type == 3:
                 tweet_txn_success_latencies.append(entry.latency_micros)
+            if entry.txn_type == 4:
+                read_txn_success_latencies.append(entry.latency_micros)
         else:
             failure_latencies.append(entry.latency_micros)
             failure_num_extra += entry.extra
@@ -210,6 +211,7 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
         p999_latency_failure = p999(failure_latencies),
         follow_txn_avg_latency_success = mean(follow_txn_success_latencies),
         tweet_txn_avg_latency_success = mean(tweet_txn_success_latencies),
+        read_txn_avg_latency_success = mean(read_txn_success_latencies),
 
         extra_all = all_num_extra,
         extra_success = success_num_extra,
