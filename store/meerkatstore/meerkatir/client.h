@@ -45,10 +45,16 @@
 #include <thread>
 #include <hdr/hdr_histogram.h>
 
+struct Interval{
+    uint64_t lower_bound = 0;
+    uint64_t upper_bound = -1;
+};
+
 namespace meerkatstore {
 namespace meerkatir {
 
 typedef void (*yield_t)(void);
+
 
 class Client {
 public:
@@ -58,7 +64,7 @@ public:
 
     // Overriding functions from ::Client.
     void Begin();
-    int Get(const std::string &key, int idx, std::string &value, yield_t yield);
+    int Get(const std::string &key, int idx, std::string &value, yield_t yield, Interval& snapshot_interval);
     int Put(const std::string &key, int idx, const std::string &value);
     bool Commit(yield_t yield);
     void Abort();
@@ -68,7 +74,7 @@ public:
 public:
     // Returns the underlying read and write set.
     const Transaction& GetTransaction() const { return txn; }
-
+    const bool getValidation() {return txn.getValidation(); }
 private:
     zip::network::buffer& ZiplogBuffer() { return ziplogBuffer.front(); }
 

@@ -73,6 +73,8 @@ private:
     // all the key indexes that help faster conflict check
     std::set<int> keyIndexes;
 
+    // flag tells us if we must validate the transaction or if we may skip it
+    bool validation = false;
 public:
     Transaction();
     Transaction(uint8_t nr_reads, uint8_t nr_writes, char* buf);
@@ -88,6 +90,8 @@ public:
     unsigned long serializedSize() const {
         return readSet.size() * sizeof(read_t) + writeSet.size() * sizeof(write_t) + keyIndexes.size() * sizeof(int);
     }
+    void setValidation() {validation = true; }
+    const bool getValidation() {return validation; }
 };
 
 #endif /* _TRANSACTION_H_ */

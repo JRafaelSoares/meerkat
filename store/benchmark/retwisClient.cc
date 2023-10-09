@@ -41,6 +41,7 @@ struct measurement {
     timeval end;
     bool status;
     int ttype;
+    bool validated;
 };
 constexpr size_t kNumMeasurement = 1000000;
 
@@ -117,6 +118,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
         gettimeofday(&t1, NULL);
         client->Begin();
+        Interval t;
 
         // Decide which type of retwis transaction it is going to be.
         ttype = rand() % 100;
@@ -130,7 +132,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             sort(keyIdx.begin(), keyIdx.end());
 
             int idx = keyIdx[0];
-            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
@@ -148,7 +150,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
             for (int i = 0; i < 2 && status; i++) {
                 int idx = keyIdx[i];
-                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
                     Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                     status = false;
                 }
@@ -167,7 +169,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             //for (int i = 0; i < 1 && status; i++) {
             for (int i = 0; i < 3 && status; i++) {
                 int idx = keyIdx[i];
-                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
                     Warning("Aborting due to %d %s %d", idx, keys[idx].c_str(), ret);
                     status = false;
                 }
@@ -190,7 +192,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             sort(keyIdx.begin(), keyIdx.end());
             for (int i = 0; i < nGets && status; i++) {
                 int idx = keyIdx[i];
-                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield))) {
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
                     Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                     status = false;
                 }
@@ -209,16 +211,17 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
         // log only the transactions that finished in the interval we actually measure
         if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup) &&
-            (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)) {
+        (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)
+            ) {
             //sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d\n", ++nTransactions, t1.tv_sec,
             //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
             //long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
             //printf("client-%d, %lu %ld.%06ld %ld.%06ld %ld %d\n", global_thread_id, nTransactions, t1.tv_sec,
             //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
             if (nTransactions > results.size())
-                results.emplace_back(measurement{nTransactions, t1, t2, status, ttype});
+                results.emplace_back(measurement{nTransactions, t1, t2, status, ttype, client->getValidation()});
             else
-                results[nTransactions] = measurement {nTransactions + 1, t1, t2, status, ttype};
+                results[nTransactions] = measurement {nTransactions + 1, t1, t2, status, ttype, client->getValidation()};
             ++nTransactions;
         }
         gettimeofday(&t1, NULL);
@@ -232,8 +235,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             break;
         }
         const auto latency = (r.end.tv_sec - r.start.tv_sec)*1000000 + (r.end.tv_usec - r.start.tv_usec);
-        fprintf(fp, "%d %ld.%06ld %ld.%06ld %ld %d %d\n",
-            r.nTransaction, r.start.tv_sec, r.start.tv_usec, r.end.tv_sec, r.end.tv_usec, latency, r.status?1:0, r.ttype);
+        fprintf(fp, "%d %ld.%06ld %ld.%06ld %ld %d %d %d\n",
+            r.nTransaction, r.start.tv_sec, r.start.tv_usec, r.end.tv_sec, r.end.tv_usec, latency, r.status?1:0, r.ttype, r.validated?1:0);
 
         if (r.status) {
             tCount++;

@@ -89,4 +89,5 @@ Transaction::clear()
     readSet.clear();
     writeSet.clear();
     keyIndexes.clear();
+    validation = false;
 }

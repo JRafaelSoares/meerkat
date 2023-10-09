@@ -15,6 +15,7 @@ LogEntry = collections.namedtuple('LogEntry', [
     'latency_micros',
     'success',
     'txn_type',
+    'validated',
     'extra',
 ])
 
@@ -45,7 +46,9 @@ BenchmarkResult = collections.namedtuple('BenchmarkResult', [
     'p999_latency_failure',
     'follow_txn_avg_latency_success',
     'tweet_txn_avg_latency_success',
-    'read_txn_avg_latency_success',
+    'read_txn_validated_avg_latency_success',
+    'read_txn_skipped_avg_latency_success',
+    'validated_percentage',
     # Extra.
     'extra_all',
     'extra_success',
@@ -117,10 +120,10 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
                 continue
 
             parts = line.strip().split()
-            assert len(parts) == 6 or len(parts) == 7, parts
+            assert len(parts) == 7 or len(parts) == 8, parts
 
-            if len(parts) == 7:
-                extra = int(parts[6])
+            if len(parts) == 8:
+                extra = int(parts[7])
             else:
                 extra = 0
 
@@ -131,6 +134,7 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
                 latency_micros=int(parts[3]),
                 success=bool(int(parts[4])),
                 txn_type=int(parts[5]),
+                validated=bool(int(parts[6])),
                 extra=extra,
             ))
 
@@ -147,7 +151,8 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
     failure_latencies = []
     follow_txn_success_latencies = []
     tweet_txn_success_latencies = []
-    read_txn_success_latencies = []
+    read_txn_success_validated_latencies = []
+    read_txn_success_skipped_latencies = []
 
     all_num_extra = 0.0
     success_num_extra = 0.0
@@ -171,7 +176,10 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
             if entry.txn_type == 3:
                 tweet_txn_success_latencies.append(entry.latency_micros)
             if entry.txn_type == 4:
-                read_txn_success_latencies.append(entry.latency_micros)
+                if entry.validated:
+                    read_txn_success_validated_latencies.append(entry.latency_micros)
+                else:
+                    read_txn_success_skipped_latencies.append(entry.latency_micros)
         else:
             failure_latencies.append(entry.latency_micros)
             failure_num_extra += entry.extra
@@ -186,7 +194,10 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
     num_transactions = len(all_latencies)
     num_successful_transactions = len(success_latencies)
     num_failed_transactions = len(failure_latencies)
-
+    if len(read_txn_success_validated_latencies) == 0 and len(read_txn_success_skipped_latencies) == 0:
+        validated_percentage = 0
+    else:
+        validated_percentage =  len(read_txn_success_validated_latencies) / (len(read_txn_success_validated_latencies) + len(read_txn_success_skipped_latencies))
     return BenchmarkResult(
         num_transactions = num_transactions,
         num_successful_transactions = num_successful_transactions,
@@ -211,7 +222,9 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
         p999_latency_failure = p999(failure_latencies),
         follow_txn_avg_latency_success = mean(follow_txn_success_latencies),
         tweet_txn_avg_latency_success = mean(tweet_txn_success_latencies),
-        read_txn_avg_latency_success = mean(read_txn_success_latencies),
+        read_txn_validated_avg_latency_success = mean(read_txn_success_validated_latencies),
+        read_txn_skipped_avg_latency_success = mean(read_txn_success_skipped_latencies),
+        validated_percentage = validated_percentage,
 
         extra_all = all_num_extra,
         extra_success = success_num_extra,

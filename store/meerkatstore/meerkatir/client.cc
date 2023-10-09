@@ -109,7 +109,7 @@ Client::Begin()
 }
 
 /* Returns the value corresponding to the supplied key. */
-int Client::Get(const string &key, int idx, string &value, yield_t yield)
+int Client::Get(const string &key, int idx, string &value, yield_t yield, Interval& snapshot_interval)
 {
 #if 0
     Debug("GET [%lu, %lu : %s]", client_id, t_id, key.c_str());
@@ -130,6 +130,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
     // Send the GET operation.
     zip::client::client::zipkat_get_request request;
     request.timestamp = -1;
+    request.promise = -1;
     request.key = key;
 
     Assert(ziplogClient.get());
@@ -179,6 +180,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
 
     const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
     const auto promise = request.promise.load(std::memory_order_relaxed);
+
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_get, zip::util::time_in_us(end - start));
@@ -192,6 +194,15 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield)
     }
 #endif
     if (timestamp != zip::api::zipkat_get_response::kKeyNotFound) {
+        ASSERT(timestamp <= promise);
+        if (promise < snapshot_interval.lower_bound || timestamp > snapshot_interval.upper_bound) {
+            txn.setValidation();
+        } else {
+            snapshot_interval.lower_bound = std::max(snapshot_interval.lower_bound, timestamp);
+            snapshot_interval.upper_bound = std::min(snapshot_interval.upper_bound, promise);
+            ASSERT(snapshot_interval.lower_bound <= snapshot_interval.upper_bound);
+        }
+
         Debug("[%lu] Adding [%s] with ts %lu", client_id, key.c_str(), timestamp);
         txn.addReadSet(key, idx, timestamp);
         return REPLY_OK;
@@ -210,6 +221,7 @@ int Client::Put(const string &key, int idx, const string &value)
 #else
     Debug("PUT [%lu, %lu : %s]", client_id, t_id, key.c_str());
     // Update the write set.
+    txn.setValidation();
     txn.addWriteSet(key, idx, value);
     return REPLY_OK;
 #endif
@@ -279,7 +291,12 @@ bool Client::Commit(yield_t yield)
 #ifdef ZIP_MEASURE
     auto start = std::chrono::high_resolution_clock::now();
 #endif
-    int status = Prepare(yield);
+    int status;
+    if (txn.getValidation()){
+        status = Prepare(yield);
+    } else {
+        status = REPLY_OK;
+    }
 
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
