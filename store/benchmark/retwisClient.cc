@@ -23,7 +23,7 @@
 
 using namespace std;
 
-//#define ZIPKAT_SEPARATE_THREAD 1
+#define ZIPKAT_SEPARATE_THREAD 1
 
 // Function to pick a random key according to some distribution.
 int rand_key();
@@ -47,7 +47,8 @@ constexpr size_t kNumMeasurement = 1000000;
 
 void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplogClient,
                        zip::network::manager* manager) {
-    vector<measurement> results(kNumMeasurement);
+//    vector<measurement> results(kNumMeasurement);
+    vector<string> results;
 
     std::mt19937 core_gen;
     std::mt19937 replica_gen;
@@ -104,6 +105,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     double commitLatency = 0.0;
     string key, value;
     bool status;
+    char buffer[100];
     string v (56, 'x'); //56 bytes
 
     gettimeofday(&t0, NULL);
@@ -112,6 +114,14 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     std::vector<int> keyIdx;
     int ttype; // Transaction type.
     int ret;
+
+
+#ifdef ZIP_MEASURE
+    hdr_histogram* hist_wrk;
+    hdr_init(1, 10000, 3, &hist_wrk);
+    int hdr_count_wrk = 0;
+#endif
+
     while (1) {
         keyIdx.clear();
         status = true;
@@ -122,7 +132,6 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
         // Decide which type of retwis transaction it is going to be.
         ttype = rand() % 100;
-        //ttype = 30;
 
         if (ttype < 5) {
             // 5% - Add user transaction. 1,3
@@ -159,6 +168,9 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             ttype = 2;
         } else if (ttype < 50) {
             // 30% - Post tweet transaction. 3,5
+#ifdef ZIP_MEASURE
+            auto start = std::chrono::high_resolution_clock::now();
+#endif
             keyIdx.push_back(rand_key());
             keyIdx.push_back(rand_key());
             keyIdx.push_back(rand_key());
@@ -166,7 +178,6 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             keyIdx.push_back(rand_key());
             sort(keyIdx.begin(), keyIdx.end());
 
-            //for (int i = 0; i < 1 && status; i++) {
             for (int i = 0; i < 3 && status; i++) {
                 int idx = keyIdx[i];
                 if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
@@ -176,12 +187,24 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
                 client->Put(keys[idx], idx, v);
             }
             for (int i = 0; i < 2; i++) {
-            //for (int i = 0; i < 5; i++) {
                 int idx = keyIdx[i+3];
                 //client->Put(keys[keyIdx[i]], v);
                 client->Put(keys[idx], idx, v);
             }
             ttype = 3;
+
+#ifdef ZIP_MEASURE
+            auto end = std::chrono::high_resolution_clock::now();
+            hdr_record_value(hist_wrk, zip::util::time_in_us(end - start));
+            if (++hdr_count_wrk == 100000) {
+                hdr_count_wrk = 0;
+                auto lat_50 = hdr_value_at_percentile(hist_wrk, 50);
+                auto lat_99 = hdr_value_at_percentile(hist_wrk, 99);
+                auto lat_999 = hdr_value_at_percentile(hist_wrk, 99.9);
+                auto mean = hdr_mean(hist_wrk);
+                std::cerr << "Client-wrk (" << global_thread_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;
+            }
+#endif
         } else {
             // 50% - Get followers/timeline transaction. rand(1,10),0
             int nGets = 1 + rand() % 10;
@@ -201,34 +224,52 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         }
 
         //gettimeofday(&t3, NULL);
+        //fprintf(fp, "Begin commit\n");
         if (status) {
             status = client->Commit(boost::this_fiber::yield);
         }
         gettimeofday(&t2, NULL);
+        //fprintf(fp, "Done commit\n");
 
         //commitCount++;
         //commitLatency += ((t2.tv_sec - t3.tv_sec)*1000000 + (t2.tv_usec - t3.tv_usec));
 
         // log only the transactions that finished in the interval we actually measure
         if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup) &&
-        (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)
-            ) {
-            //sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d\n", ++nTransactions, t1.tv_sec,
-            //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
-            //long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
+            (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)) {
+            long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
+            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d\n", ++nTransactions, t1.tv_sec,
+                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
+            results.push_back(string(buffer));
+            if (status) {
+                tCount++;
+                tLatency += latency;
+            }
+
             //printf("client-%d, %lu %ld.%06ld %ld.%06ld %ld %d\n", global_thread_id, nTransactions, t1.tv_sec,
             //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
+/*
             if (nTransactions > results.size())
                 results.emplace_back(measurement{nTransactions, t1, t2, status, ttype, client->getValidation()});
             else
                 results[nTransactions] = measurement {nTransactions + 1, t1, t2, status, ttype, client->getValidation()};
             ++nTransactions;
         }
+
+        if (i % 10 == 0) {
+            fprintf(fp, "yoyo nTransaction=%lu, has been running for %ld usec, tv_sec=%ld, warmup=%ld, duration-warmup=%ld\n", nTransactions, (t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec), t2.tv_sec, FLAGS_secondsFromEpoch + FLAGS_warmup, FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup);
+        }
+*/
         gettimeofday(&t1, NULL);
-        if (((t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec)) > FLAGS_duration*1000000)
-            break;
+            if (((t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec)) > FLAGS_duration*1000000) {
+                // fprintf(fp, "yoyo break has running for %ld usec, tv_sec=%ld\n", (t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec), t1.tv_sec);
+                break;
+            }
+        }
     }
   
+/*
+    std::cout << "start writing to log file\n";
     for (auto& r : results) {
         if (r.nTransaction == 0) {
             // Skip the pre-filled elements   
@@ -243,7 +284,12 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             tLatency += latency;
         }
     }
+    std::cout << "Write to log file done\n";
+*/
 
+    for (auto line : results) {
+        fprintf(fp, "%s", line.c_str());
+    }
     fprintf(fp, "# Commit_Ratio: %lf\n", (double)tCount/nTransactions);
     fprintf(fp, "# Overall_Latency: %lf\n", tLatency/tCount);
     fprintf(fp, "# Get: %d, %lf\n", getCount, getLatency/getCount);
@@ -270,6 +316,7 @@ void* client_thread_func(int ziplog_id, int cpu_id, zip::network::manager* manag
 
     for (int i = 0; i < FLAGS_numClientFibers; i++) {
         client_fibers[i].join();
+        //printf("ziplog id=%d, done joinging i=%d\n", ziplog_id, i);
     }
     return NULL;
 };
@@ -326,7 +373,14 @@ int main(int argc, char **argv) {
     std::vector<std::thread> client_thread_arr(FLAGS_numClientThreads);
     const auto id_base = FLAGS_nhost * FLAGS_numClientThreads;
     for (size_t i = 0; i < FLAGS_numClientThreads; i++) {
-        managers.emplace_back(std::make_unique<zip::network::manager>(zip::consts::rdma::DEFAULT_DEVICE, zip::consts::rdma::DEFAULT_PORT, zip::consts::rdma::DEFAULT_GID));
+/*
+        if (i % 2 == 0) {
+            printf("thread id=%d at %s\n", i, zip::consts::rdma::DEFAULT_DEVICE1);
+            managers.emplace_back(std::make_unique<zip::network::manager>(zip::consts::rdma::DEFAULT_DEVICE1, zip::consts::rdma::DEFAULT_PORT, 1));
+        } else {
+*/
+            printf("thread id=%d at %s\n", i, zip::consts::rdma::DEFAULT_DEVICE);
+            managers.emplace_back(std::make_unique<zip::network::manager>(zip::consts::rdma::DEFAULT_DEVICE, zip::consts::rdma::DEFAULT_PORT, zip::consts::rdma::DEFAULT_GID));
         int ziplog_core;
         int txn_core;
 #ifdef ZIPKAT_SEPARATE_THREAD

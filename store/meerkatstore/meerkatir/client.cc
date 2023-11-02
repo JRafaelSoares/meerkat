@@ -153,7 +153,6 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
         std::cerr << "Client-yield (" << client_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;;
     }
 #endif
-        yield();
     }
 #else
     static std::chrono::nanoseconds wait(7);
@@ -184,7 +183,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_get, zip::util::time_in_us(end - start));
-    if (++hdr_count_get == 10000) {
+    if (++hdr_count_get == 100000) {
         hdr_count_get = 0;
         auto lat_50 = hdr_value_at_percentile(hist_get, 50);
         auto lat_99 = hdr_value_at_percentile(hist_get, 99);
