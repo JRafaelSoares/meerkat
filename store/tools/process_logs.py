@@ -4,6 +4,10 @@
 # summarizes the results of the benchmark (e.g., average latency, average
 # throughput).
 
+from multiprocessing import Process, Pipe
+import math
+import time
+
 import argparse
 import collections
 import json
@@ -87,6 +91,208 @@ def p999(xs):
     else:
         return xs[int(999 * float(len(xs) / 1000))]
 
+
+def process_IA_microbench_logs(client_log_filename):
+    """
+    One line in the log:
+        [INFO] [client_main] [1697835459009552] Final statistics: throughput: 515481 IOPS       median latency: 7 us    99% latency: 15 us      99.9% latency: 20 us mean: 9.13735.
+    """
+    tpts = []
+    p50s = []
+    p99s = []
+    p999s = []
+    means = []
+    with open(client_log_filename, 'r') as f:
+        for line in f:
+            # -2 to remove the ending period
+            l = line[:-2].strip().split()
+            assert l[5] == "throughput:"
+            tpts.append(int(l[6]))
+            assert (l[8] == "median" and l[9] == "latency:")
+            p50s.append(int(l[10]))
+            assert (l[12] == "99%" and l[13] == "latency:")
+            p99s.append(int(l[14]))
+            assert (l[16] == "99.9%" and l[17] == "latency:")
+            p999s.append(int(l[18]))
+            assert (l[20] == "mean:")
+            means.append(float(l[21]))
+
+    return BenchmarkResult(
+        num_transactions = 0,
+        num_successful_transactions = 0,
+        num_failed_transactions = 0,
+        abort_rate = 0,
+
+        throughput_all = sum(tpts),
+        throughput_success = 0,
+        throughput_failure = 0,
+
+        average_latency_all = mean(means),
+        median_latency_all = mean(p50s),
+        p99_latency_all = mean(p99s),
+        p999_latency_all = mean(p999s),
+        average_latency_success = 0,
+        median_latency_success = 0,
+        p99_latency_success = 0,
+        p999_latency_success = 0,
+        average_latency_failure = 0,
+        median_latency_failure = 0,
+        p99_latency_failure = 0,
+        p999_latency_failure = 0,
+        follow_txn_avg_latency_success = 0,
+        tweet_txn_avg_latency_success = 0,
+
+        extra_all = 0,
+        extra_success = 0,
+        extra_failure = 0,
+    )
+
+def process_log(lines, conn):
+    all_lats = []
+    succ_lats = []
+    fail_lats = []
+
+    for line in lines:
+        parts = line.strip().split()
+        assert len(parts) == 5 or len(parts) == 7, parts
+
+        if len(parts) == 7:
+            txn_type = int(parts[5])
+            extra = int(parts[6])
+        else:
+            txn_type = -1
+            extra = 0
+
+        lat = int(parts[3])
+        all_lats.append(lat)
+        if bool(int(parts[4])):
+            succ_lats.append(lat)
+        else:
+            fail_lats.append(lat)
+    conn.send([all_lats, succ_lats, fail_lats])
+
+def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
+    """Processes a concatenation of client logs.
+
+    process_client_logs takes in a file, client_log, of client log entries that
+    look something like this:
+
+        1 1540674576.757905 1540674576.758526 621 1
+        2 1540674576.758569 1540674576.759168 599 1
+        3 1540674576.759174 1540674576.759846 672 1
+        4 1540674576.759851 1540674576.760529 678 1
+
+    or like this:
+
+        4 1540674576.759851 1540674576.760529 678 1 2 4
+
+    where
+        - the first column is incremented per client,
+        - the second column is the start time of the txn (in seconds),
+        - the third column is the end time of the txn (in seconds),
+        - the fourth column is the latency of the transaction in microseconds,
+        - the fifth column is 1 if the txn was successful and 0 otherwise,
+        - the sixth column is the transaction type,
+        - the seventh column is the number of extra retries.
+
+    process_client_logs outputs a summary of the results. The first `warmup`
+    seconds of data is ignored, and the next `duration` seconds is analyzed.
+    All data after this duration is ignored.
+    """
+    # Extract the log entries, ignoring comments and empty lines.
+    log_entries = []
+    lines = []
+    with open(client_log_filename, 'r') as f:
+        for line in f:
+            if line.startswith('#') or line.strip() == "":
+                continue
+            lines.append(line)
+
+    # Create split for each threads
+    kNumThreads = 8
+    offset = math.ceil(len(lines) / kNumThreads)
+    left = 0
+    line_split = []
+    for i in range(kNumThreads):
+        ll = None
+        if left + offset > len(lines):
+            ll = lines[left : ]
+        else:
+            ll = lines[left : left + offset]
+        left += offset
+        line_split.append(ll)
+
+    # Spawn processes
+    processes = []
+    entries = [[]] * kNumThreads
+    rets = []
+    for i in range(kNumThreads):
+        parent_conn, child_conn = Pipe()
+        p = Process(target=process_log, args=(line_split[i], child_conn))
+        p.start()
+        processes.append([p, parent_conn])
+
+    for p in processes:
+        rets.append(p[1].recv())
+        p[0].join()
+
+
+    all_latencies = []
+    success_latencies = []
+    failure_latencies = []
+    follow_txn_success_latencies = []
+    tweet_txn_success_latencies = []
+
+    all_num_extra = 0.0
+    success_num_extra = 0.0
+    failure_num_extra = 0.0
+
+    # Aggregate latency results
+    for ret in rets:
+        all_latencies += ret[0]
+        success_latencies += ret[1]
+        failure_latencies += ret[2]
+
+    if len(all_latencies) == 0:
+        raise ValueError("Zero completed transactions.")
+
+    all_latencies.sort()
+    success_latencies.sort()
+    failure_latencies.sort()
+
+    num_transactions = len(all_latencies)
+    num_successful_transactions = len(success_latencies)
+    num_failed_transactions = len(failure_latencies)
+
+    return BenchmarkResult(
+        num_transactions = num_transactions,
+        num_successful_transactions = num_successful_transactions,
+        num_failed_transactions = num_failed_transactions,
+        abort_rate = float(num_failed_transactions) / num_transactions,
+
+        throughput_all = float(num_transactions) / duration_sec,
+        throughput_success = float(num_successful_transactions) / duration_sec,
+        throughput_failure = float(num_failed_transactions) / duration_sec,
+
+        average_latency_all = mean(all_latencies),
+        median_latency_all = median(all_latencies),
+        p99_latency_all = p99(all_latencies),
+        p999_latency_all = p999(all_latencies),
+        average_latency_success = mean(success_latencies),
+        median_latency_success = median(success_latencies),
+        p99_latency_success = p99(success_latencies),
+        p999_latency_success = p999(success_latencies),
+        average_latency_failure = mean(failure_latencies),
+        median_latency_failure = median(failure_latencies),
+        p99_latency_failure = p99(failure_latencies),
+        p999_latency_failure = p999(failure_latencies),
+        follow_txn_avg_latency_success = mean(follow_txn_success_latencies),
+        tweet_txn_avg_latency_success = mean(tweet_txn_success_latencies),
+
+        extra_all = all_num_extra,
+        extra_success = success_num_extra,
+        extra_failure = failure_num_extra,
+    )
 
 def process_client_logs(client_log_filename, warmup_sec, duration_sec):
     """Processes a concatenation of client logs.

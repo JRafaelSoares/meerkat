@@ -1,5 +1,5 @@
 from collections import namedtuple
-from process_logs import BenchmarkResult, process_client_logs
+from process_logs import BenchmarkResult, process_client_logs, process_client_logs_parallel, process_IA_microbench_logs
 from pyrem.host import RemoteHost
 from pyrem.task import Parallel
 import argparse
@@ -452,7 +452,7 @@ def kill_clients(ziplog_clients, parameters):
     kill_tasks = []
     for host_i, client in enumerate(list(ziplog_clients.keys())[:parameters.num_client_machines]):
         cmd = [
-            "killall -2 retwisClient",
+            "sudo killall -9", parameters.client_binary.split('/')[-1]
         ]
 
         # Record (and print) the command we run, so that we can re-run it later
@@ -592,20 +592,29 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
 
     # Concatenate client logs.
     print(boxed('Concatenating and processing logs.'))
+    # --- zipkat experiment
     subprocess.call([
         'cat {0}/*.log > {0}/client.log'.format(bench_dir.path)
     ], shell=True)
+    # --- ziplog experiment
+    #subprocess.call([
+    #    'cat {0}/client_192.168.*err* | grep IOPS > {0}/client.log'.format(bench_dir.path)
+    #], shell=True)
 
     # Process logs.
     try:
-        results = process_client_logs(
+        # --- zipkat experiment
+        results = process_client_logs_parallel(
             '{}/client.log'.format(bench_dir.path),
             warmup_sec=parameters.benchmark_warmup_seconds,
             duration_sec=parameters.benchmark_duration_seconds -
                          2*parameters.benchmark_warmup_seconds)
-        bench_dir.write_dict('results.json', results._asdict())
+        # --- ziplog experiment
+        #results = process_IA_microbench_logs('{}/client.log'.format(bench_dir.path))
+        #bench_dir.write_dict('results.json', results._asdict())
     except ValueError:
         results = None
+    #results = None
 
     bench_dir.write_string('logs_processed_time.txt', str(datetime.datetime.now()))
 
