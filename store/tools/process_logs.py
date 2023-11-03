@@ -44,11 +44,15 @@ BenchmarkResult = collections.namedtuple('BenchmarkResult', [
     'median_latency_failure',
     'p99_latency_failure',
     'p999_latency_failure',
+    'add_user_txn_avg_latency_success',
     'follow_txn_avg_latency_success',
     'tweet_txn_avg_latency_success',
     'read_txn_validated_avg_latency_success',
     'read_txn_skipped_avg_latency_success',
     'validated_percentage',
+    'read_tx_avg_latency',
+    'write_tx_avg_latency',
+
     # Extra.
     'extra_all',
     'extra_success',
@@ -149,6 +153,8 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
     all_latencies = []
     success_latencies = []
     failure_latencies = []
+
+    add_user_txn_success_latencies = []
     follow_txn_success_latencies = []
     tweet_txn_success_latencies = []
     read_txn_success_validated_latencies = []
@@ -171,6 +177,8 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
         if entry.success:
             success_latencies.append(entry.latency_micros)
             success_num_extra += entry.extra
+            if entry.txn_type == 1:
+                add_user_txn_success_latencies.append(entry.latency_micros)
             if entry.txn_type == 2:
                 follow_txn_success_latencies.append(entry.latency_micros)
             if entry.txn_type == 3:
@@ -220,12 +228,14 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
         median_latency_failure = median(failure_latencies),
         p99_latency_failure = p99(failure_latencies),
         p999_latency_failure = p999(failure_latencies),
+        add_user_txn_avg_latency_success = mean(add_user_txn_success_latencies),
         follow_txn_avg_latency_success = mean(follow_txn_success_latencies),
         tweet_txn_avg_latency_success = mean(tweet_txn_success_latencies),
         read_txn_validated_avg_latency_success = mean(read_txn_success_validated_latencies),
         read_txn_skipped_avg_latency_success = mean(read_txn_success_skipped_latencies),
         validated_percentage = validated_percentage,
-
+        read_tx_avg_latency = mean(read_txn_success_validated_latencies + read_txn_success_skipped_latencies),
+        write_tx_avg_latency = mean(add_user_txn_success_latencies + follow_txn_success_latencies + tweet_txn_success_latencies),
         extra_all = all_num_extra,
         extra_success = success_num_extra,
         extra_failure = failure_num_extra,
