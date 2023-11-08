@@ -23,7 +23,7 @@
 
 using namespace std;
 
-#define ZIPKAT_SEPARATE_THREAD 1
+//#define ZIPKAT_SEPARATE_THREAD 1
 
 // Function to pick a random key according to some distribution.
 int rand_key();

@@ -155,7 +155,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
 #endif
     }
 #else
-    static std::chrono::nanoseconds wait(7);
+    std::chrono::microseconds wait(7);
     auto begin = std::chrono::high_resolution_clock::now();
     while (true) {
         if (std::chrono::high_resolution_clock::now() - begin > wait) break;
@@ -163,6 +163,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     }
     txn.addReadSet(key, idx, 0);
 
+#ifdef ZIP_MEASURE
     auto end2 = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_get, zip::util::time_in_us(end2 - start));
     if (++hdr_count_get == 10000) {
@@ -173,6 +174,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
         auto mean = hdr_mean(hist_get);
         std::cerr << "Client-get (" << client_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;;
     }
+#endif
 
     return REPLY_OK;
 #endif
@@ -240,6 +242,8 @@ int Client::Prepare(yield_t yield)
     size_t txnLen = txn.serializedSize();
     auto& req = ZiplogBuffer().as<zip::api::storage_insert_after>();
     req.message_type = zip::api::STORAGE_INSERT_AFTER;
+    req.global_client_id = client_id;
+
     req.client_id = client_id;
     req.gsn_after = 0;
     req.num_slots = 1;
