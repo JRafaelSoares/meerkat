@@ -208,6 +208,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         } else {
             // 50% - Get followers/timeline transaction. rand(1,10),0
             int nGets = 1 + rand() % 10;
+
             for (int i = 0; i < nGets; i++) {
                 keyIdx.push_back(rand_key());
             }
@@ -238,8 +239,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup) &&
             (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)) {
             long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
-            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d\n", ++nTransactions, t1.tv_sec,
-                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
+            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d\n", ++nTransactions, t1.tv_sec,
+                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0);
             results.push_back(string(buffer));
             if (status) {
                 tCount++;
@@ -260,12 +261,13 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             fprintf(fp, "yoyo nTransaction=%lu, has been running for %ld usec, tv_sec=%ld, warmup=%ld, duration-warmup=%ld\n", nTransactions, (t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec), t2.tv_sec, FLAGS_secondsFromEpoch + FLAGS_warmup, FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup);
         }
 */
+
+        }
         gettimeofday(&t1, NULL);
             if (((t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec)) > FLAGS_duration*1000000) {
                 // fprintf(fp, "yoyo break has running for %ld usec, tv_sec=%ld\n", (t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec), t1.tv_sec);
                 break;
             }
-        }
     }
   
 /*
