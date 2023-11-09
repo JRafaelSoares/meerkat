@@ -48,15 +48,8 @@ BenchmarkResult = collections.namedtuple('BenchmarkResult', [
     'median_latency_failure',
     'p99_latency_failure',
     'p999_latency_failure',
-    'add_user_txn_avg_latency_success',
-    'follow_txn_avg_latency_success',
-    'tweet_txn_avg_latency_success',
-    'read_txn_validated_avg_latency_success',
-    'read_txn_skipped_avg_latency_success',
     'validated_percentage',
-    'read_tx_avg_latency',
-    'write_tx_avg_latency',
-
+    'unnecessary_validated_percentage',
     # Extra.
     'extra_all',
     'extra_success',
@@ -152,24 +145,38 @@ def process_log(lines, conn):
     succ_lats = []
     fail_lats = []
 
+    read_txn_success_latencies = 0
+    validated_read_txn = 0
+    unnecessary_validations = 0
+
     for line in lines:
         parts = line.strip().split()
-        assert len(parts) == 5 or len(parts) == 7, parts
+        assert len(parts) == 7 or len(parts) == 8, parts
 
-        if len(parts) == 7:
-            txn_type = int(parts[5])
-            extra = int(parts[6])
+        if len(parts) == 8:
+            extra = int(parts[7])
         else:
-            txn_type = -1
             extra = 0
 
         lat = int(parts[3])
+        txn_type = int(parts[5])
+        validated = bool(int(parts[6]))
+
         all_lats.append(lat)
+
+        if txn_type == 4:
+            read_txn_success_latencies += 1
+            if validated:
+                validated_read_txn += 1
+            if bool(int(parts[4])):
+                unnecessary_validations += 1
+
         if bool(int(parts[4])):
             succ_lats.append(lat)
         else:
             fail_lats.append(lat)
-    conn.send([all_lats, succ_lats, fail_lats])
+
+    conn.send([all_lats, succ_lats, fail_lats, read_txn_success_latencies, validated_read_txn, unnecessary_validations])
 
 def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
     """Processes a concatenation of client logs.
@@ -240,8 +247,9 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
     all_latencies = []
     success_latencies = []
     failure_latencies = []
-    follow_txn_success_latencies = []
-    tweet_txn_success_latencies = []
+    read_txn_success_latencies = 0
+    validated = 0
+    unecessary_validated = 0
 
     all_num_extra = 0.0
     success_num_extra = 0.0
@@ -252,6 +260,9 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         all_latencies += ret[0]
         success_latencies += ret[1]
         failure_latencies += ret[2]
+        read_txn_success_latencies += ret[3]
+        validated += ret[4]
+        unecessary_validated += ret[5]
 
     if len(all_latencies) == 0:
         raise ValueError("Zero completed transactions.")
@@ -286,9 +297,8 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         median_latency_failure = median(failure_latencies),
         p99_latency_failure = p99(failure_latencies),
         p999_latency_failure = p999(failure_latencies),
-        follow_txn_avg_latency_success = mean(follow_txn_success_latencies),
-        tweet_txn_avg_latency_success = mean(tweet_txn_success_latencies),
-
+        validated_percentage = validated / read_txn_success_latencies,
+        unnecessary_validated_percentage = unecessary_validated / validated,
         extra_all = all_num_extra,
         extra_success = success_num_extra,
         extra_failure = failure_num_extra,
@@ -408,6 +418,7 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
     num_transactions = len(all_latencies)
     num_successful_transactions = len(success_latencies)
     num_failed_transactions = len(failure_latencies)
+    print(len(read_txn_success_validated_latencies))
     if len(read_txn_success_validated_latencies) == 0 and len(read_txn_success_skipped_latencies) == 0:
         validated_percentage = 0
     else:
@@ -434,14 +445,8 @@ def process_client_logs(client_log_filename, warmup_sec, duration_sec):
         median_latency_failure = median(failure_latencies),
         p99_latency_failure = p99(failure_latencies),
         p999_latency_failure = p999(failure_latencies),
-        add_user_txn_avg_latency_success = mean(add_user_txn_success_latencies),
-        follow_txn_avg_latency_success = mean(follow_txn_success_latencies),
-        tweet_txn_avg_latency_success = mean(tweet_txn_success_latencies),
-        read_txn_validated_avg_latency_success = mean(read_txn_success_validated_latencies),
-        read_txn_skipped_avg_latency_success = mean(read_txn_success_skipped_latencies),
         validated_percentage = validated_percentage,
-        read_tx_avg_latency = mean(read_txn_success_validated_latencies + read_txn_success_skipped_latencies),
-        write_tx_avg_latency = mean(add_user_txn_success_latencies + follow_txn_success_latencies + tweet_txn_success_latencies),
+        unnecessary_validated_percentage = 0,
         extra_all = all_num_extra,
         extra_success = success_num_extra,
         extra_failure = failure_num_extra,

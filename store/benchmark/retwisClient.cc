@@ -115,7 +115,6 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     int ttype; // Transaction type.
     int ret;
 
-
 #ifdef ZIP_MEASURE
     hdr_histogram* hist_wrk;
     hdr_init(1, 10000, 3, &hist_wrk);
@@ -128,9 +127,10 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
         gettimeofday(&t1, NULL);
         client->Begin();
-        Interval t;
+        Interval interval;
 
         // Decide which type of retwis transaction it is going to be.
+
         ttype = rand() % 100;
 
         if (ttype < 5) {
@@ -141,7 +141,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             sort(keyIdx.begin(), keyIdx.end());
 
             int idx = keyIdx[0];
-            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
+            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
@@ -159,7 +159,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
             for (int i = 0; i < 2 && status; i++) {
                 int idx = keyIdx[i];
-                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                     Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                     status = false;
                 }
@@ -180,7 +180,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
             for (int i = 0; i < 3 && status; i++) {
                 int idx = keyIdx[i];
-                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                     Warning("Aborting due to %d %s %d", idx, keys[idx].c_str(), ret);
                     status = false;
                 }
@@ -216,7 +216,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             sort(keyIdx.begin(), keyIdx.end());
             for (int i = 0; i < nGets && status; i++) {
                 int idx = keyIdx[i];
-                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, t))) {
+                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                     Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                     status = false;
                 }
