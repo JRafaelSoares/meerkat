@@ -29,6 +29,8 @@ BenchmarkResult = collections.namedtuple('BenchmarkResult', [
     'num_successful_transactions',
     'num_failed_transactions',
     'abort_rate',
+    'read_txn_abort_rate',
+    'write_txn_abort_rate',
 
     # Throughputs.
     'throughput_all',
@@ -49,7 +51,15 @@ BenchmarkResult = collections.namedtuple('BenchmarkResult', [
     'p99_latency_failure',
     'p999_latency_failure',
     'validated_percentage',
+    'promise_not_changed',
     'unnecessary_validated_percentage',
+
+    # Specific Tx latency
+    'add_user_txn_success_latencies',
+    'follow_txn_success_latencies',
+    'tweet_txn_success_latencies',
+    'write_txn_latencies',
+    'read_txn_success_latencies',
     # Extra.
     'extra_all',
     'extra_success',
@@ -145,38 +155,59 @@ def process_log(lines, conn):
     succ_lats = []
     fail_lats = []
 
-    read_txn_success_latencies = 0
-    validated_read_txn = 0
-    unnecessary_validations = 0
+    add_user_txn_success_latencies = []
+    follow_txn_success_latencies = []
+    tweet_txn_success_latencies = []
+    read_txn_success_latencies = []
 
+    read_txn_count = 0
+    validated_read_txn = 0
+    promise_wasnt_updated = 0
+    unnecessary_validations = 0
+    read_txn_aborts = 0
     for line in lines:
         parts = line.strip().split()
-        assert len(parts) == 7 or len(parts) == 8, parts
+        assert len(parts) == 8 or len(parts) == 9, parts
 
-        if len(parts) == 8:
-            extra = int(parts[7])
+        if len(parts) == 9:
+            extra = int(parts[8])
         else:
             extra = 0
 
         lat = int(parts[3])
         txn_type = int(parts[5])
         validated = bool(int(parts[6]))
+        promise_didnt_change = bool(int(parts[7]))
 
         all_lats.append(lat)
 
         if txn_type == 4:
-            read_txn_success_latencies += 1
+            read_txn_count += 1
             if validated:
                 validated_read_txn += 1
-            if bool(int(parts[4])):
-                unnecessary_validations += 1
+                if promise_didnt_change:
+                    promise_wasnt_updated += 1
+                if bool(int(parts[4])):
+                    unnecessary_validations += 1
 
         if bool(int(parts[4])):
             succ_lats.append(lat)
+            if txn_type == 1:
+                add_user_txn_success_latencies.append(lat)
+            elif txn_type == 2:
+                follow_txn_success_latencies.append(lat)
+            elif txn_type == 3:
+                tweet_txn_success_latencies.append(lat)
+            elif txn_type == 4:
+                read_txn_success_latencies.append(lat)
         else:
             fail_lats.append(lat)
+            if txn_type == 4:
+                read_txn_aborts += 1
 
-    conn.send([all_lats, succ_lats, fail_lats, read_txn_success_latencies, validated_read_txn, unnecessary_validations])
+
+    conn.send([all_lats, succ_lats, fail_lats, read_txn_count, validated_read_txn, unnecessary_validations,
+               add_user_txn_success_latencies, follow_txn_success_latencies, tweet_txn_success_latencies, read_txn_success_latencies, read_txn_aborts, promise_wasnt_updated])
 
 def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
     """Processes a concatenation of client logs.
@@ -247,9 +278,17 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
     all_latencies = []
     success_latencies = []
     failure_latencies = []
-    read_txn_success_latencies = 0
+
+    add_user_txn_success_latencies = []
+    follow_txn_success_latencies = []
+    tweet_txn_success_latencies = []
+    read_txn_success_latencies = []
+
+    read_txn_count = 0
     validated = 0
+    promise_not_changed = 0
     unecessary_validated = 0
+    read_txn_aborts = 0
 
     all_num_extra = 0.0
     success_num_extra = 0.0
@@ -260,9 +299,16 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         all_latencies += ret[0]
         success_latencies += ret[1]
         failure_latencies += ret[2]
-        read_txn_success_latencies += ret[3]
+        read_txn_count += ret[3]
         validated += ret[4]
         unecessary_validated += ret[5]
+        add_user_txn_success_latencies += ret[6]
+        follow_txn_success_latencies += ret[7]
+        tweet_txn_success_latencies += ret[8]
+        read_txn_success_latencies += ret[9]
+        read_txn_aborts += ret[10]
+        promise_not_changed += ret[11]
+
 
     if len(all_latencies) == 0:
         raise ValueError("Zero completed transactions.")
@@ -280,6 +326,8 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         num_successful_transactions = num_successful_transactions,
         num_failed_transactions = num_failed_transactions,
         abort_rate = float(num_failed_transactions) / num_transactions,
+        read_txn_abort_rate = 0 if num_failed_transactions == 0 else float(read_txn_aborts) / num_failed_transactions,
+        write_txn_abort_rate = 0 if num_failed_transactions == 0 else 1 - float(read_txn_aborts) / num_failed_transactions,
 
         throughput_all = float(num_transactions) / duration_sec,
         throughput_success = float(num_successful_transactions) / duration_sec,
@@ -297,8 +345,14 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         median_latency_failure = median(failure_latencies),
         p99_latency_failure = p99(failure_latencies),
         p999_latency_failure = p999(failure_latencies),
-        validated_percentage = validated / read_txn_success_latencies,
-        unnecessary_validated_percentage = unecessary_validated / validated,
+        validated_percentage = validated / read_txn_count,
+        promise_not_changed = 0 if validated == 0 else promise_not_changed / validated,
+        unnecessary_validated_percentage = 0 if validated == 0 else unecessary_validated / validated,
+        add_user_txn_success_latencies = mean(add_user_txn_success_latencies),
+        follow_txn_success_latencies = mean(follow_txn_success_latencies),
+        tweet_txn_success_latencies = mean(tweet_txn_success_latencies),
+        write_txn_latencies = mean(add_user_txn_success_latencies+follow_txn_success_latencies+tweet_txn_success_latencies),
+        read_txn_success_latencies = mean(read_txn_success_latencies),
         extra_all = all_num_extra,
         extra_success = success_num_extra,
         extra_failure = failure_num_extra,

@@ -26,14 +26,12 @@ using namespace std;
 //#define ZIPKAT_SEPARATE_THREAD 1
 
 // Function to pick a random key according to some distribution.
-int rand_key();
+uint32_t rand_key_zipf();
 
 bool ready = false;
 double *zipf;
 vector<string> keys;
-std::mt19937 key_gen;
 vector<std::uniform_int_distribution<uint32_t>> keys_distributions;
-thread_local std::uniform_int_distribution<uint32_t> key_dis;
 
 struct measurement {
     uint64_t nTransaction;
@@ -57,10 +55,21 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     std::random_device rd;
     uint8_t preferred_thread_id;
     uint32_t localReplica = -1;
-
+    std::uniform_int_distribution<uint32_t> key_dis = std::uniform_int_distribution<uint32_t >(0, FLAGS_numKeys - 1);
     core_gen = std::mt19937(rd());
     replica_gen = std::mt19937(rd());
-    key_dis = std::uniform_int_distribution<uint32_t>(0, FLAGS_numKeys - 1);
+    std::mt19937 key_gen = std::mt19937(rd());
+
+    auto rand_key = [&] () {
+        if (FLAGS_zipf <= 0) {
+            return key_dis(key_gen);
+        }
+        else {
+            return rand_key_zipf();
+        }
+    };
+    std::cout << "Flag Num Keys " << FLAGS_numKeys << std::endl;
+    std::cout << "Zipfian Flag " << FLAGS_zipf << std::endl;
 
     // Open file to dump results
     //uint32_t global_client_id = FLAGS_nhost * 1000 + FLAGS_ncpu * FLAGS_numClientThreads + thread_id;
@@ -239,8 +248,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup) &&
             (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)) {
             long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
-            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d\n", ++nTransactions, t1.tv_sec,
-                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0);
+            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d\n", ++nTransactions, t1.tv_sec,
+                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0);
             results.push_back(string(buffer));
             if (status) {
                 tCount++;
@@ -348,7 +357,6 @@ int main(int argc, char **argv) {
 
     // initialize the uniform distribution
     std::random_device rd;
-    key_gen = std::mt19937(rd());
 
     // Read in the keys from a file.
     string key, value;
@@ -435,47 +443,42 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-int rand_key()
+uint32_t rand_key_zipf()
 {
-    if (FLAGS_zipf <= 0) {
-        // Uniform selection of keys.
-        return key_dis(key_gen);
-    } else {
-        // Zipf-like selection of keys.
-        if (!ready) {
-            zipf = new double[FLAGS_numKeys];
+    // Zipf-like selection of keys.
+    if (!ready) {
+        zipf = new double[FLAGS_numKeys];
 
-            double c = 0.0;
-            for (int i = 1; i <= FLAGS_numKeys; i++) {
-                c = c + (1.0 / pow((double) i, FLAGS_zipf));
-            }
-            c = 1.0 / c;
-
-            double sum = 0.0;
-            for (int i = 1; i <= FLAGS_numKeys; i++) {
-                sum += (c / pow((double) i, FLAGS_zipf));
-                zipf[i-1] = sum;
-            }
-            ready = true;
+        double c = 0.0;
+        for (int i = 1; i <= FLAGS_numKeys; i++) {
+            c = c + (1.0 / pow((double) i, FLAGS_zipf));
         }
+        c = 1.0 / c;
 
-        double random = 0.0;
-        while (random == 0.0 || random == 1.0) {
-            random = (1.0 + rand())/RAND_MAX;
+        double sum = 0.0;
+        for (int i = 1; i <= FLAGS_numKeys; i++) {
+            sum += (c / pow((double) i, FLAGS_zipf));
+            zipf[i-1] = sum;
         }
-
-        // binary search to find key;
-        int l = 0, r = FLAGS_numKeys, mid;
-        while (l < r) {
-            mid = (l + r) / 2;
-            if (random > zipf[mid]) {
-                l = mid + 1;
-            } else if (random < zipf[mid]) {
-                r = mid - 1;
-            } else {
-                break;
-            }
-        }
-        return mid;
+        ready = true;
     }
+
+    double random = 0.0;
+    while (random == 0.0 || random == 1.0) {
+        random = (1.0 + rand())/RAND_MAX;
+    }
+
+    // binary search to find key;
+    int l = 0, r = FLAGS_numKeys, mid;
+    while (l < r) {
+        mid = (l + r) / 2;
+        if (random > zipf[mid]) {
+            l = mid + 1;
+        } else if (random < zipf[mid]) {
+            r = mid - 1;
+        } else {
+            break;
+        }
+    }
+    return mid;
 }

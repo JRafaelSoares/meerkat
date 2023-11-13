@@ -197,7 +197,13 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     if (timestamp != zip::api::zipkat_get_response::kKeyNotFound) {
         ASSERT(timestamp <= promise);
         if (promise < snapshot_interval.lower_bound || timestamp > snapshot_interval.upper_bound) {
+
+            if (!txn.getValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {
+                txn.setPromiseNotUpdated();
+            }
             txn.setValidation();
+
+
         } else {
             snapshot_interval.lower_bound = std::max(snapshot_interval.lower_bound, timestamp);
             snapshot_interval.upper_bound = std::min(snapshot_interval.upper_bound, promise);

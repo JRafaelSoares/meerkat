@@ -75,6 +75,9 @@ private:
 
     // flag tells us if we must validate the transaction or if we may skip it
     bool validation = false;
+
+    // flag tells us if we must validate the transaction or if we may skip it
+    bool promise_not_updated = false;
 public:
     Transaction();
     Transaction(uint8_t nr_reads, uint8_t nr_writes, char* buf);
@@ -92,6 +95,10 @@ public:
     }
     void setValidation() {validation = true; }
     const bool getValidation() {return validation; }
+
+    void setPromiseNotUpdated() {promise_not_updated = true; }
+    const bool getPromiseNotUpdated() {return promise_not_updated; }
+
 };
 
 #endif /* _TRANSACTION_H_ */

@@ -90,4 +90,5 @@ Transaction::clear()
     writeSet.clear();
     keyIndexes.clear();
     validation = false;
+    promise_not_updated = false;
 }
