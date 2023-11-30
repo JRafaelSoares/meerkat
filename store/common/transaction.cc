@@ -19,6 +19,7 @@ Transaction::Transaction(uint8_t nr_reads, uint8_t nr_writes, char* buf) {
     // no coming here at the client side
     assert(false);
 
+    /*
     auto *read_ptr = reinterpret_cast<read_t *> (buf);
     for (int i = 0; i < nr_reads; i++) {
         readSet[std::string(read_ptr->key, 64)] = Timestamp(read_ptr->timestamp);
@@ -30,6 +31,7 @@ Transaction::Transaction(uint8_t nr_reads, uint8_t nr_writes, char* buf) {
         writeSet[std::string(write_ptr->key, 64)] = std::string(write_ptr->value, 64);
         write_ptr++;
     }
+     */
 }
 
 Transaction::~Transaction() { }
@@ -47,9 +49,9 @@ Transaction::getWriteSet() const
 }
 
 void
-Transaction::addReadSet(const string &key, int idx, const Timestamp &readTime)
+Transaction::addReadSet(const string &key, int idx, const Timestamp &readTime, const std::string value)
 {
-    readSet[key] = readTime;
+    readSet[key] = {readTime, value};
     keyIndexes.emplace(idx);
 }
 
@@ -63,8 +65,8 @@ Transaction::addWriteSet(const string &key, int idx, const string &value)
 void Transaction::serialize(char *reqBuf) const {
     auto *read_ptr = reinterpret_cast<read_t *> (reqBuf);
     for (auto read : readSet) {
-        read_ptr->timestamp = read.second.getTimestamp();
-        read_ptr->promise = read.second.getPromise();
+        read_ptr->timestamp = get<0>(read.second).getTimestamp();
+        read_ptr->promise = get<0>(read.second).getPromise();
         std::memcpy(read_ptr->key, read.first.c_str(), 64);
         read_ptr++;
     }
@@ -91,4 +93,5 @@ Transaction::clear()
     keyIndexes.clear();
     validation = false;
     promise_not_updated = false;
+    hot_key = false;
 }

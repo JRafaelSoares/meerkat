@@ -76,6 +76,8 @@ public:
     const Transaction& GetTransaction() const { return txn; }
     const bool getValidation() {return txn.getValidation(); }
     const bool getPromiseNotUpdated() {return txn.getPromiseNotUpdated(); }
+    const bool getHotKey() {return txn.getHotKey(); }
+
 
 private:
     zip::network::buffer& ZiplogBuffer() { return ziplogBuffer.front(); }

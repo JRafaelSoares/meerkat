@@ -125,6 +125,9 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     if (txn.getWriteSet().find(key) != txn.getWriteSet().end()) {
         value = txn.getWriteSet().find(key)->second;
         return REPLY_OK;
+    } else if (txn.getReadSet().find(key) != txn.getReadSet().end()){
+        value = get<1>(txn.getReadSet().find(key)->second);
+        return REPLY_OK;
     }
 
     // Send the GET operation.
@@ -182,6 +185,12 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
     const auto promise = request.promise.load(std::memory_order_relaxed);
 
+    /*
+    if (key == "mzemH3Nprbnq8lSABflDq0dbhK5zwPWADpBgYEQzWAhYlo0FqmROgGMlXllghCNF") {
+        txn.setHotKey();
+        std::cout << "Key 0 found. Current interval: [" << snapshot_interval.lower_bound << ", " << snapshot_interval.upper_bound << "], obtained interval: [" << request.timestamp.load(std::memory_order_relaxed) << ", " << request.promise.load(std::memory_order_relaxed) << "] " << std::endl;
+    }
+     */
 #ifdef ZIP_MEASURE
     auto end = std::chrono::high_resolution_clock::now();
     hdr_record_value(hist_get, zip::util::time_in_us(end - start));
@@ -211,7 +220,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
         }
 
         Debug("[%lu] Adding [%s] with ts %lu", client_id, key.c_str(), timestamp);
-        txn.addReadSet(key, idx, timestamp);
+        txn.addReadSet(key, idx, timestamp, request.value);
         return REPLY_OK;
     } else {
         Debug("[%lu] %s not found", client_id, key.c_str());

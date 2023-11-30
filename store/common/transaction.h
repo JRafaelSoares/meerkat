@@ -55,7 +55,7 @@ struct write_t {
         char value[64];
 };
 
-typedef std::map<std::string, Timestamp> ReadSetMap;
+typedef std::map<std::string, std::tuple<Timestamp, std::string>> ReadSetMap;
 typedef std::map<std::string, std::string> WriteSetMap;
 //typedef std::unordered_map<std::string, Timestamp> ReadSetMap;
 //typedef std::unordered_map<std::string, std::string> WriteSetMap;
@@ -78,6 +78,8 @@ private:
 
     // flag tells us if we must validate the transaction or if we may skip it
     bool promise_not_updated = false;
+
+    bool hot_key = false;
 public:
     Transaction();
     Transaction(uint8_t nr_reads, uint8_t nr_writes, char* buf);
@@ -86,7 +88,7 @@ public:
     const ReadSetMap& getReadSet() const;
     const WriteSetMap& getWriteSet() const;
 
-    void addReadSet(const std::string &key, int idx, const Timestamp &readTime);
+    void addReadSet(const std::string &key, int idx, const Timestamp &readTime, const std::string value);
     void addWriteSet(const std::string &key, int idx, const std::string &value);
     void serialize(char *reqBuf) const;
     void clear();
@@ -98,6 +100,9 @@ public:
 
     void setPromiseNotUpdated() {promise_not_updated = true; }
     const bool getPromiseNotUpdated() {return promise_not_updated; }
+
+    void setHotKey() {hot_key = true; }
+    const bool getHotKey() {return hot_key; }
 
 };
 

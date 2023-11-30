@@ -65,9 +65,59 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             return key_dis(key_gen);
         }
         else {
-            return rand_key_zipf();
+            if (!ready) {
+                zipf = new double[FLAGS_numKeys];
+
+                double c = 0.0;
+                for (int i = 1; i <= FLAGS_numKeys; i++) {
+                    c = c + (1.0 / pow((double) i, FLAGS_zipf));
+                }
+                c = 1.0 / c;
+
+                double sum = 0.0;
+                for (int i = 1; i <= FLAGS_numKeys; i++) {
+                    sum += (c / pow((double) i, FLAGS_zipf));
+                    zipf[i-1] = sum;
+                }
+                ready = true;
+            }
+
+            double random = 0.0;
+            while (random == 0.0 || random == 1.0) {
+                random = (1.0 + rand())/RAND_MAX;
+            }
+
+            // binary search to find key;
+            int l = 0, r = FLAGS_numKeys, mid;
+            while (l < r) {
+                mid = (l + r) / 2;
+                if (random > zipf[mid]) {
+                    l = mid + 1;
+                } else if (random < zipf[mid]) {
+                    r = mid - 1;
+                } else {
+                    break;
+                }
+            }
+            return (unsigned int)mid;
         }
     };
+    /*
+    std::map<int, double> dist;
+    for (int i = 0; i < 10000000; i++) {
+        auto x = rand_key();
+        if (dist.find(x) != dist.end()) {
+            dist.find(x)->second++;
+        } else {
+            dist.insert({x, 1});
+        }
+    }
+    auto y = dist.begin();
+    for (auto x = 0; x != 30; x++) {
+        std::cout << "Key: " << y->first << " prob: " << y->second / 10000000 << std::endl;
+        y++;
+    }
+     */
     std::cout << "Flag Num Keys " << FLAGS_numKeys << std::endl;
     std::cout << "Zipfian Flag " << FLAGS_zipf << std::endl;
 
@@ -123,7 +173,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     std::vector<int> keyIdx;
     int ttype; // Transaction type.
     int ret;
-
+    FLAGS_secondsFromEpoch = t0.tv_sec;
 #ifdef ZIP_MEASURE
     hdr_histogram* hist_wrk;
     hdr_init(1, 10000, 3, &hist_wrk);
@@ -147,7 +197,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             keyIdx.push_back(rand_key());
             keyIdx.push_back(rand_key());
             keyIdx.push_back(rand_key());
-            sort(keyIdx.begin(), keyIdx.end());
+            //sort(keyIdx.begin(), keyIdx.end());
 
             int idx = keyIdx[0];
             if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
@@ -164,7 +214,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             // 15% - Follow/Unfollow transaction. 2,2
             keyIdx.push_back(rand_key());
             keyIdx.push_back(rand_key());
-            sort(keyIdx.begin(), keyIdx.end());
+            //sort(keyIdx.begin(), keyIdx.end());
 
             for (int i = 0; i < 2 && status; i++) {
                 int idx = keyIdx[i];
@@ -185,7 +235,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             keyIdx.push_back(rand_key());
             keyIdx.push_back(rand_key());
             keyIdx.push_back(rand_key());
-            sort(keyIdx.begin(), keyIdx.end());
+            //sort(keyIdx.begin(), keyIdx.end());
 
             for (int i = 0; i < 3 && status; i++) {
                 int idx = keyIdx[i];
@@ -222,7 +272,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
                 keyIdx.push_back(rand_key());
             }
 
-            sort(keyIdx.begin(), keyIdx.end());
+            //sort(keyIdx.begin(), keyIdx.end());
             for (int i = 0; i < nGets && status; i++) {
                 int idx = keyIdx[i];
                 if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
@@ -248,8 +298,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup) &&
             (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)) {
             long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
-            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d\n", ++nTransactions, t1.tv_sec,
-                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0);
+            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d %d\n", ++nTransactions, t1.tv_sec,
+                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
             results.push_back(string(buffer));
             if (status) {
                 tCount++;
@@ -301,6 +351,9 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     for (auto line : results) {
         fprintf(fp, "%s", line.c_str());
     }
+    std::cout << "Overall latency " << tLatency/tCount << std::endl;
+    std::cout << "Overall Tput " << tCount/(FLAGS_duration - 2*FLAGS_warmup) << std::endl;
+
     fprintf(fp, "# Commit_Ratio: %lf\n", (double)tCount/nTransactions);
     fprintf(fp, "# Overall_Latency: %lf\n", tLatency/tCount);
     fprintf(fp, "# Get: %d, %lf\n", getCount, getLatency/getCount);
