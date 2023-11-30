@@ -267,7 +267,6 @@ int Client::Prepare(yield_t yield)
     commit_req->nr_reads = txn.getReadSet().size();
     commit_req->nr_writes = txn.getWriteSet().size();
     txn.serialize((char*)commit_req->data);
-    //txn.serialize(buf);
     req.data_length = commit_req->length();
 
     Assert(req.length() < ZiplogBuffer().length());

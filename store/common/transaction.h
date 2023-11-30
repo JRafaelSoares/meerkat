@@ -45,14 +45,14 @@ enum TransactionStatus {
 // transations are serialized to a buffer containing arrays
 // of these structures:
 struct read_t {
-        uint64_t timestamp;
-        uint64_t promise;
-        char key[64];
+    uint64_t timestamp;
+    uint64_t promise;
+    char key[64];
 };
 
 struct write_t {
-        char key[64];
-        char value[64];
+    char key[64];
+    char value[64];
 };
 
 typedef std::map<std::string, std::tuple<Timestamp, std::string>> ReadSetMap;
@@ -70,8 +70,13 @@ private:
     // map between key and value(s)
     WriteSetMap writeSet;
 
-    // all the key indexes that help faster conflict check
+    // all key indexes that help faster conflict check
+#ifdef  FINE_GRAINED_CONFLICT_CHECK
+    std::set<int> readKeyIndexes;
+    std::set<int> writeKeyIndexes;
+#else
     std::set<int> keyIndexes;
+#endif
 
     // flag tells us if we must validate the transaction or if we may skip it
     bool validation = false;
@@ -87,13 +92,26 @@ public:
 
     const ReadSetMap& getReadSet() const;
     const WriteSetMap& getWriteSet() const;
+#ifdef FINE_GRAINED_CONFLICT_CHECK
+    const std::set<int>& getReadKeyIndexes() const {
+        return readKeyIndexes;
+    }
+
+    const std::set<int>& getWriteKeyIndexes() const {
+        return writeKeyIndexes;
+    }
+#endif
 
     void addReadSet(const std::string &key, int idx, const Timestamp &readTime, const std::string value);
     void addWriteSet(const std::string &key, int idx, const std::string &value);
     void serialize(char *reqBuf) const;
     void clear();
     unsigned long serializedSize() const {
+#ifdef FINE_GRAINED_CONFLICT_CHECK
+        return readSet.size() * sizeof(read_t) + writeSet.size() * sizeof(write_t) + readKeyIndexes.size() * sizeof(int) + writeKeyIndexes.size() * sizeof(int);
+#else
         return readSet.size() * sizeof(read_t) + writeSet.size() * sizeof(write_t) + keyIndexes.size() * sizeof(int);
+#endif
     }
     void setValidation() {validation = true; }
     const bool getValidation() {return validation; }

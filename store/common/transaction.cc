@@ -52,14 +52,22 @@ void
 Transaction::addReadSet(const string &key, int idx, const Timestamp &readTime, const std::string value)
 {
     readSet[key] = {readTime, value};
+#ifdef FINE_GRAINED_CONFLICT_CHECK
+    readKeyIndexes.emplace(idx);
+#else
     keyIndexes.emplace(idx);
+#endif
 }
 
 void
 Transaction::addWriteSet(const string &key, int idx, const string &value)
 {
     writeSet[key] = value;
+#ifdef FINE_GRAINED_CONFLICT_CHECK
+    writeKeyIndexes.emplace(idx);
+#else
     keyIndexes.emplace(idx);
+#endif
 }
 
 void Transaction::serialize(char *reqBuf) const {
@@ -79,10 +87,21 @@ void Transaction::serialize(char *reqBuf) const {
     }
 
     auto index_ptr = reinterpret_cast<int *>(write_ptr);
+#ifdef FINE_GRAINED_CONFLICT_CHECK
+    for (auto idx : readKeyIndexes) {
+        *index_ptr = idx;
+        index_ptr++;
+    }
+    for (auto idx : writeKeyIndexes) {
+        *index_ptr = idx;
+        index_ptr++;
+    }
+#else
     for (auto idx : keyIndexes) {
         *index_ptr = idx;
         index_ptr++;
     }
+#endif
 }
 
 void
@@ -90,7 +109,12 @@ Transaction::clear()
 {
     readSet.clear();
     writeSet.clear();
+#ifdef FINE_GRAINED_CONFLICT_CHECK
+    readKeyIndexes.clear();
+    writeKeyIndexes.clear();
+#else
     keyIndexes.clear();
+#endif
     validation = false;
     promise_not_updated = false;
     hot_key = false;
