@@ -43,6 +43,58 @@ struct measurement {
 };
 constexpr size_t kNumMeasurement = 1000000;
 
+unsigned int zipf_dist()
+{
+    static int first = true;      // Static first time flag
+    static double c = 0;          // Normalization constant
+    static double *sum_probs;     // Pre-calculated sum of probabilities
+    double z;                     // Uniform random number (0 < z < 1)
+    int zipf_value;               // Computed exponential value to be returned
+    int    i;                     // Loop counter
+    int low, high, mid;           // Binary-search bounds
+
+    // Compute normalization constant on first call only
+    if (first == true)
+    {
+        for (i=1; i<=FLAGS_numKeys; i++)
+            c = c + (1.0 / pow((double) i, FLAGS_zipf));
+        c = 1.0 / c;
+
+        sum_probs = new double[FLAGS_numKeys+1];
+        sum_probs[0] = 0;
+        for (i=1; i<=FLAGS_numKeys; i++) {
+            sum_probs[i] = sum_probs[i-1] + c / pow((double) i, FLAGS_zipf);
+        }
+        first = false;
+    }
+
+    // Pull a uniform random number (0 < z < 1)
+    do
+    {
+        z = (1.0 + rand())/RAND_MAX;
+    }
+    while ((z == 0) || (z == 1));
+
+    // Map z to the value
+    low = 1, high = FLAGS_numKeys, mid;
+    do {
+        mid = floor((low+high)/2);
+        if (sum_probs[mid] >= z && sum_probs[mid-1] < z) {
+            zipf_value = mid;
+            break;
+        } else if (sum_probs[mid] >= z) {
+            high = mid-1;
+        } else {
+            low = mid+1;
+        }
+    } while (low <= high);
+
+    // Assert that zipf_value is between 1 and N
+    assert((zipf_value >=1) && (zipf_value <= FLAGS_numKeys));
+
+    return(zipf_value-1);
+}
+
 void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplogClient,
                        zip::network::manager* manager) {
 //    vector<measurement> results(kNumMeasurement);
@@ -65,43 +117,10 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             return key_dis(key_gen);
         }
         else {
-            if (!ready) {
-                zipf = new double[FLAGS_numKeys];
-
-                double c = 0.0;
-                for (int i = 1; i <= FLAGS_numKeys; i++) {
-                    c = c + (1.0 / pow((double) i, FLAGS_zipf));
-                }
-                c = 1.0 / c;
-
-                double sum = 0.0;
-                for (int i = 1; i <= FLAGS_numKeys; i++) {
-                    sum += (c / pow((double) i, FLAGS_zipf));
-                    zipf[i-1] = sum;
-                }
-                ready = true;
-            }
-
-            double random = 0.0;
-            while (random == 0.0 || random == 1.0) {
-                random = (1.0 + rand())/RAND_MAX;
-            }
-
-            // binary search to find key;
-            int l = 0, r = FLAGS_numKeys, mid;
-            while (l < r) {
-                mid = (l + r) / 2;
-                if (random > zipf[mid]) {
-                    l = mid + 1;
-                } else if (random < zipf[mid]) {
-                    r = mid - 1;
-                } else {
-                    break;
-                }
-            }
-            return (unsigned int)mid;
+            return zipf_dist();
         }
     };
+
     /*
     std::map<int, double> dist;
     for (int i = 0; i < 10000000; i++) {
@@ -118,6 +137,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         y++;
     }
      */
+
     std::cout << "Flag Num Keys " << FLAGS_numKeys << std::endl;
     std::cout << "Zipfian Flag " << FLAGS_zipf << std::endl;
 
@@ -535,3 +555,4 @@ uint32_t rand_key_zipf()
     }
     return mid;
 }
+
