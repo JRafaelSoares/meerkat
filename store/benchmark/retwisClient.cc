@@ -430,7 +430,7 @@ int main(int argc, char **argv) {
 
     // initialize the uniform distribution
     std::random_device rd;
-
+    zipf_dist();
     // Read in the keys from a file.
     string key, value;
     ifstream in;
