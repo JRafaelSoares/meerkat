@@ -25,11 +25,17 @@ using namespace std;
 
 //#define ZIPKAT_SEPARATE_THREAD 1
 
+#define EXP_BACKOFF 1
+// This makes the maximum backoff time 5.12 ms, which is half of one epoch.
+#define BACKOFF_MAX_EXP 8
+#define BACKOFF_UNIT_TIME_US 20
+//#define SORT_KEY 1
+
 // Function to pick a random key according to some distribution.
 uint32_t rand_key_zipf();
 
-bool ready = false;
-double *zipf;
+//bool ready = false;
+//double *zipf;
 vector<string> keys;
 vector<std::uniform_int_distribution<uint32_t>> keys_distributions;
 
@@ -93,6 +99,21 @@ unsigned int zipf_dist()
     assert((zipf_value >=1) && (zipf_value <= FLAGS_numKeys));
 
     return(zipf_value-1);
+}
+
+struct TxnWorkload {
+    int ttype;
+    std::vector<uint32_t> keyIdx;
+    timeval start;
+};
+
+ostream& operator<<(ostream& os, const TxnWorkload& wrk)
+{
+    os << "ttype=" << wrk.ttype << "\n";
+    for (auto idx : wrk.keyIdx)
+        os << idx << ",";
+    os << "\n";
+    return os;
 }
 
 void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplogClient,
@@ -188,10 +209,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     string v (56, 'x'); //56 bytes
 
     gettimeofday(&t0, NULL);
-    srand(t0.tv_sec + t0.tv_usec);
+    srand(global_thread_id * (t0.tv_sec + t0.tv_usec));
 
-    std::vector<int> keyIdx;
-    int ttype; // Transaction type.
     int ret;
     FLAGS_secondsFromEpoch = t0.tv_sec;
 #ifdef ZIP_MEASURE
@@ -200,44 +219,59 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     int hdr_count_wrk = 0;
 #endif
 
+    bool retry = false;
+    int retry_exp = 0;
+    TxnWorkload wrk;
     while (1) {
-        keyIdx.clear();
+        if (!retry) {
+            const int ttype = rand() % 100;
+            int numKeys;
+            if (ttype < 5) {
+                numKeys = 3;
+            } else if (ttype < 20) {
+                numKeys = 2;
+            } else if (ttype < 50) {
+                numKeys = 5;
+            } else {
+                numKeys = 1 + rand() % 10;
+            }
+
+            wrk.ttype = ttype;
+            wrk.keyIdx.clear();
+            for (int i = 0; i < numKeys; ++i) {
+                wrk.keyIdx.emplace_back(rand_key());
+            }
+#ifdef SORT_KEY
+            sort(wrk.keyIdx.begin(), wrk.keyIdx.end());
+#endif
+
+            //std::cout << "client-" << global_thread_id << ": " << wrk;
+            gettimeofday(&wrk.start, NULL);
+        }
         status = true;
 
         gettimeofday(&t1, NULL);
         client->Begin();
         Interval interval;
 
-        // Decide which type of retwis transaction it is going to be.
-
-        ttype = rand() % 100;
-
-        if (ttype < 5) {
+        int ttype; // Transaction type for log
+        if (wrk.ttype < 5) {
             // 5% - Add user transaction. 1,3
-            keyIdx.push_back(rand_key());
-            keyIdx.push_back(rand_key());
-            keyIdx.push_back(rand_key());
-            //sort(keyIdx.begin(), keyIdx.end());
-
-            int idx = keyIdx[0];
+            int idx = wrk.keyIdx[0];
             if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
 
             for (int i = 0; i < 3 && status; i++) {
-                int idx = keyIdx[i];
+                int idx = wrk.keyIdx[i];
                 client->Put(keys[idx], idx, v);
             }
             ttype = 1;
-        } else if (ttype < 20) {
+        } else if (wrk.ttype < 20) {
             // 15% - Follow/Unfollow transaction. 2,2
-            keyIdx.push_back(rand_key());
-            keyIdx.push_back(rand_key());
-            //sort(keyIdx.begin(), keyIdx.end());
-
             for (int i = 0; i < 2 && status; i++) {
-                int idx = keyIdx[i];
+                int idx = wrk.keyIdx[i];
                 if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                     Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                     status = false;
@@ -245,20 +279,10 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
                 client->Put(keys[idx], idx, v);
             }
             ttype = 2;
-        } else if (ttype < 50) {
+        } else if (wrk.ttype < 50) {
             // 30% - Post tweet transaction. 3,5
-#ifdef ZIP_MEASURE
-            auto start = std::chrono::high_resolution_clock::now();
-#endif
-            keyIdx.push_back(rand_key());
-            keyIdx.push_back(rand_key());
-            keyIdx.push_back(rand_key());
-            keyIdx.push_back(rand_key());
-            keyIdx.push_back(rand_key());
-            //sort(keyIdx.begin(), keyIdx.end());
-
             for (int i = 0; i < 3 && status; i++) {
-                int idx = keyIdx[i];
+                int idx = wrk.keyIdx[i];
                 if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                     Warning("Aborting due to %d %s %d", idx, keys[idx].c_str(), ret);
                     status = false;
@@ -266,37 +290,15 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
                 client->Put(keys[idx], idx, v);
             }
             for (int i = 0; i < 2; i++) {
-                int idx = keyIdx[i+3];
-                //client->Put(keys[keyIdx[i]], v);
+                int idx = wrk.keyIdx[i+3];
                 client->Put(keys[idx], idx, v);
             }
             ttype = 3;
-
-#ifdef ZIP_MEASURE
-            auto end = std::chrono::high_resolution_clock::now();
-            hdr_record_value(hist_wrk, zip::util::time_in_us(end - start));
-            if (++hdr_count_wrk == 100000) {
-                hdr_count_wrk = 0;
-                auto lat_50 = hdr_value_at_percentile(hist_wrk, 50);
-                auto lat_99 = hdr_value_at_percentile(hist_wrk, 99);
-                auto lat_999 = hdr_value_at_percentile(hist_wrk, 99.9);
-                auto mean = hdr_mean(hist_wrk);
-                std::cerr << "Client-wrk (" << global_thread_id << ") statistics: median latency: " << lat_50 << " us\t99% latency: " << lat_99 << " us\t99.9% latency: " << lat_999 << " us\tmean: " << mean << std::endl;
-            }
-#endif
         } else {
             // 50% - Get followers/timeline transaction. rand(1,10),0
-            int nGets = 1 + rand() % 10;
-
-            for (int i = 0; i < nGets; i++) {
-                keyIdx.push_back(rand_key());
-            }
-
-            //sort(keyIdx.begin(), keyIdx.end());
-            for (int i = 0; i < nGets && status; i++) {
-                int idx = keyIdx[i];
-                if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
-                    Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
+            for (int keyIdx : wrk.keyIdx) {
+                if ((ret = client->Get(keys[keyIdx], keyIdx, value, boost::this_fiber::yield, interval))) {
+                    Warning("Aborting due to %s %d", keys[keyIdx].c_str(), ret);
                     status = false;
                 }
             }
@@ -305,8 +307,25 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
         //gettimeofday(&t3, NULL);
         //fprintf(fp, "Begin commit\n");
+        int retry_count_log;
         if (status) {
             status = client->Commit(boost::this_fiber::yield);
+            if (status)  {
+                retry_count_log = retry_exp;
+                retry = false;
+                retry_exp = 0;
+            } else {
+#ifdef EXP_BACKOFF
+                retry = true;
+                // backoff
+                const int exp = std::min(++retry_exp, BACKOFF_MAX_EXP);
+                const uint64_t backoff = std::uniform_int_distribution<uint64_t>(0UL, (1UL << exp) * BACKOFF_UNIT_TIME_US)(key_gen);
+                //Info("backoff %lu us", backoff);
+                boost::this_fiber::sleep_for(std::chrono::microseconds(backoff));
+                retry_count_log = -1 * retry_exp;
+#endif
+            }
+
         }
         gettimeofday(&t2, NULL);
         //fprintf(fp, "Done commit\n");
@@ -317,9 +336,17 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         // log only the transactions that finished in the interval we actually measure
         if ((t2.tv_sec >= FLAGS_secondsFromEpoch + FLAGS_warmup) &&
             (t2.tv_sec < FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup)) {
-            long latency = (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
-            sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d %d\n", ++nTransactions, t1.tv_sec,
-                    t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
+            long latency = status ?
+                (t2.tv_sec - wrk.start.tv_sec)*1000000 + (t2.tv_usec - wrk.start.tv_usec) :
+                (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
+
+            if (status) {
+                sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d %d %d %d\n", ++nTransactions, wrk.start.tv_sec,
+                        wrk.start.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
+            } else {
+                sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d %d %d %d\n", ++nTransactions, t1.tv_sec,
+                        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
+            }
             results.push_back(string(buffer));
             if (status) {
                 tCount++;
@@ -414,6 +441,12 @@ void segfault_sigaction(int signal, siginfo_t *si, void *arg)
 
 int main(int argc, char **argv) {
     gflags::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef EXP_BACKOFF
+    printf("EXP_BACKOFF enabled\n");
+#endif
+#ifdef SORT_KEY
+    printf("SORT_KEY enabled\n");
+#endif
 
 /*
     struct sigaction sa;
