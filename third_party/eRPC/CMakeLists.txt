@@ -213,6 +213,9 @@ set(MICA_SOURCES
   mica/src/mica/util/cityhash/city_mod.cc
   mica/src/mica/util/config.cc)
 
+# Compile the library
+add_library(erpc ${SOURCES})
+
 # The app to compile. Only one app is compiled to reduce compile time.
 if(EXISTS "${CMAKE_SOURCE_DIR}/scripts/autorun_app_file")
   file(STRINGS "scripts/autorun_app_file" APP)
@@ -374,8 +377,7 @@ if(NOT WIN32)
   set(LIBRARIES ${LIBRARIES} rt numa pthread)
 endif()
 
-# Compile the library
-add_library(erpc ${SOURCES})
+
 
 if(DPDK_NEEDED STREQUAL "true")
   if (NOT WIN32)

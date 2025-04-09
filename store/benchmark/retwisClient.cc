@@ -258,7 +258,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         if (wrk.ttype < 5) {
             // 5% - Add user transaction. 1,3
             int idx = wrk.keyIdx[0];
-            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
+            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval, /* read_only */true))) {
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
@@ -315,8 +315,8 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
                 retry = false;
                 retry_exp = 0;
             } else {
-#ifdef EXP_BACKOFF
                 retry = true;
+#ifdef EXP_BACKOFF
                 // backoff
                 const int exp = std::min(++retry_exp, BACKOFF_MAX_EXP);
                 const uint64_t backoff = std::uniform_int_distribution<uint64_t>(0UL, (1UL << exp) * BACKOFF_UNIT_TIME_US)(key_gen);
@@ -370,10 +370,10 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
 
         }
         gettimeofday(&t1, NULL);
-            if (((t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec)) > FLAGS_duration*1000000) {
+        if (((t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec)) > FLAGS_duration*1000000) {
                 // fprintf(fp, "yoyo break has running for %ld usec, tv_sec=%ld\n", (t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec), t1.tv_sec);
                 break;
-            }
+        }
     }
   
 /*
@@ -442,7 +442,7 @@ void segfault_sigaction(int signal, siginfo_t *si, void *arg)
 int main(int argc, char **argv) {
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 #ifdef EXP_BACKOFF
-    printf("EXP_BACKOFF enabled\n");
+    printf("EXP_BACKOFF enabled, BACKOFF_UNIT_TIME_US=%d, BACKOFF_MAX_EXP=%d\n", BACKOFF_UNIT_TIME_US, BACKOFF_MAX_EXP);
 #endif
 #ifdef SORT_KEY
     printf("SORT_KEY enabled\n");
@@ -549,6 +549,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 
+/*
 uint32_t rand_key_zipf()
 {
     // Zipf-like selection of keys.
@@ -588,4 +589,5 @@ uint32_t rand_key_zipf()
     }
     return mid;
 }
+*/
 

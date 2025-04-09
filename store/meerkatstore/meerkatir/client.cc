@@ -109,7 +109,7 @@ Client::Begin()
 }
 
 /* Returns the value corresponding to the supplied key. */
-int Client::Get(const string &key, int idx, string &value, yield_t yield, Interval& snapshot_interval)
+int Client::Get(const string &key, int idx, string &value, yield_t yield, Interval& snapshot_interval, bool read_only)
 {
 #if 0
     Debug("GET [%lu, %lu : %s]", client_id, t_id, key.c_str());
@@ -132,6 +132,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
 
     // Send the GET operation.
     zip::client::client::zipkat_get_request request;
+    request.read_only = read_only;
     request.timestamp = -1;
     request.promise = -1;
     request.key = key;
@@ -182,8 +183,8 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     return REPLY_OK;
 #endif
 
-    const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
-    const auto promise = request.promise.load(std::memory_order_relaxed);
+    const uint64_t timestamp = request.timestamp.load(std::memory_order_relaxed);
+    const uint64_t promise = request.promise.load(std::memory_order_relaxed);
 
     /*
     if (key == "mzemH3Nprbnq8lSABflDq0dbhK5zwPWADpBgYEQzWAhYlo0FqmROgGMlXllghCNF") {
@@ -211,8 +212,6 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
                 txn.setPromiseNotUpdated();
             }
             txn.setValidation();
-
-
         } else {
             snapshot_interval.lower_bound = std::max(snapshot_interval.lower_bound, timestamp);
             snapshot_interval.upper_bound = std::min(snapshot_interval.upper_bound, promise);

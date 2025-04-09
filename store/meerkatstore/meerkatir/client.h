@@ -64,7 +64,8 @@ public:
 
     // Overriding functions from ::Client.
     void Begin();
-    int Get(const std::string &key, int idx, std::string &value, yield_t yield, Interval& snapshot_interval);
+    int Get(const std::string &key, int idx, std::string &value, yield_t yield, Interval& snapshot_interval,
+        bool read_only = false);
     int Put(const std::string &key, int idx, const std::string &value);
     bool Commit(yield_t yield);
     void Abort();
