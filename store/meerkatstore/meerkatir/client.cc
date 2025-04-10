@@ -206,7 +206,8 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
 #endif
     if (timestamp != zip::api::zipkat_get_response::kKeyNotFound) {
         ASSERT(timestamp <= promise);
-        if (promise < snapshot_interval.lower_bound || timestamp > snapshot_interval.upper_bound) {
+
+        if (promise == zip::api::zipkat_get_response::kNoPromise || promise < snapshot_interval.lower_bound || timestamp > snapshot_interval.upper_bound) {
             Debug("[%lu] Disable Fast Validation. Current Interval: [%lu,%lu] Received Interval: [%lu, %lu]",
                 client_id, snapshot_interval.lower_bound, snapshot_interval.upper_bound, timestamp, promise);
             if (!txn.getFastValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {

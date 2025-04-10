@@ -175,10 +175,11 @@ def process_log(lines, conn):
         assert len(parts) == 11, parts
 
         lat = int(parts[3])
-        committed = bool(parts[4])
+        committed = bool(int(parts[4]))
         txn_type = int(parts[5])
         fast_validated = bool(int(parts[6]))
-        promise_didnt_change = bool(int(parts[7]))
+        hot_key = bool(int(parts[8]))
+
         hot_key = bool(int(parts[8]))
 
         all_lats.append(lat)
@@ -219,9 +220,9 @@ def process_log(lines, conn):
             if txn_type == 4:
                 read_txn_aborts += 1
 
-
     conn.send([all_lats, succ_lats, fail_lats, read_txn_count, fast_validated_read_txn, unnecessary_slow_validations,
-               add_user_txn_success_latencies, follow_txn_success_latencies, tweet_txn_success_latencies, read_txn_success_latencies, read_txn_aborts, promise_wasnt_updated, hot_key_total, hot_key_validation])
+               add_user_txn_success_latencies, follow_txn_success_latencies, tweet_txn_success_latencies, read_txn_success_latencies,
+               read_txn_aborts, promise_wasnt_updated, hot_key_total, hot_key_validation])
 
 def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
     """Processes a concatenation of client logs.
@@ -362,9 +363,9 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         median_latency_failure = median(failure_latencies),
         p99_latency_failure = p99(failure_latencies),
         p999_latency_failure = p999(failure_latencies),
-        fast_validated_percentage_committed = 0 if len(read_txn_success_latencies) == 0 else fast_validated / len(read_txn_success_latencies),
-        fast_validated_percentage_global = 0 if read_txn_count == 0 else fast_validated / read_txn_count,
-        unnecessary_validated_percentage = 0 if unecessary_slow_validated == 0 else unecessary_slow_validated / (len(read_txn_success_latencies)-fast_validated),
+        fast_validated_percentage_committed = 0 if len(read_txn_success_latencies) == 0 else float(fast_validated) / len(read_txn_success_latencies),
+        fast_validated_percentage_global = 0 if read_txn_count == 0 else float(fast_validated) / read_txn_count,
+        unnecessary_validated_percentage = 0 if unecessary_slow_validated == 0 else float(unecessary_slow_validated) / (len(read_txn_success_latencies)-fast_validated),
         promise_not_changed = 0,
         #slow_validated_percentage = 0 if read_txn_count == 0 else slow_validated / read_txn_count,
         #promise_not_changed = 0 if slow_validated == 0 else promise_not_changed / slow_validated,
