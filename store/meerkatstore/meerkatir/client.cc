@@ -183,8 +183,8 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     return REPLY_OK;
 #endif
 
-    const uint64_t timestamp = request.timestamp.load(std::memory_order_relaxed);
-    const uint64_t promise = request.promise.load(std::memory_order_relaxed);
+    const auto timestamp = request.timestamp.load(std::memory_order_relaxed);
+    const auto promise = request.promise.load(std::memory_order_relaxed);
 
     /*
     if (key == "mzemH3Nprbnq8lSABflDq0dbhK5zwPWADpBgYEQzWAhYlo0FqmROgGMlXllghCNF") {
@@ -205,18 +205,17 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     }
 #endif
     if (timestamp != zip::api::zipkat_get_response::kKeyNotFound) {
-        ASSERT(timestamp <= promise);
-
-        if (promise == zip::api::zipkat_get_response::kNoPromise || promise < snapshot_interval.lower_bound || timestamp > snapshot_interval.upper_bound) {
-            Debug("[%lu] Disable Fast Validation. Current Interval: [%lu,%lu] Received Interval: [%lu, %lu]",
-                client_id, snapshot_interval.lower_bound, snapshot_interval.upper_bound, timestamp, promise);
-            if (!txn.getFastValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {
+        ASSERT(promise == zip::api::zipkat_get_response::kNoPromise || timestamp <= promise);
+        if (promise == zip::api::zipkat_get_response::kNoPromise) {
+            txn.disableFastValidation();
+        } else if ((promise < snapshot_interval.lower_bound) || (timestamp > snapshot_interval.upper_bound)) {
+            if (!txn.getValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {
                 txn.setPromiseNotUpdated();
             }
             txn.disableFastValidation();
         } else {
             snapshot_interval.lower_bound = std::max(snapshot_interval.lower_bound, timestamp);
-            snapshot_interval.upper_bound = std::min(snapshot_interval.upper_bound, promise);
+            snapshot_interval.upper_bound = std::min(snapshot_interval.upper_bound, (uint64_t)promise);
             ASSERT(snapshot_interval.lower_bound <= snapshot_interval.upper_bound);
         }
 

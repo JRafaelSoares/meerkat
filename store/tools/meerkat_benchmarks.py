@@ -112,7 +112,7 @@ def azure_servers():
 # listed by ibv_devinfo.
 def clients():
     return {
-        RemoteHost('192.168.9.20') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.16') : {'phys_port'  : 0},
         RemoteHost('192.168.9.21') : {'phys_port'  : 0},
         RemoteHost('192.168.9.22') : {'phys_port'  : 0},
         RemoteHost('192.168.9.24') : {'phys_port'  : 0},
@@ -120,6 +120,7 @@ def clients():
         RemoteHost('192.168.9.26') : {'phys_port'  : 0},
         RemoteHost('192.168.9.28') : {'phys_port'  : 0},
         RemoteHost('192.168.9.29') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.30') : {'phys_port'  : 0}
     }
 
 def ziplog_order_ips():
@@ -135,9 +136,8 @@ def ziplog_order_servers():
 
 def ziplog_storage_servers():
     return {
-        RemoteHost('192.168.9.30') : {'phys_port'  : 0},
         RemoteHost('192.168.9.31') : {'phys_port'  : 0},
-
+        RemoteHost('192.168.9.32') : {'phys_port'  : 0},
     }
 
 def num_clients_to_triple(num_clients):

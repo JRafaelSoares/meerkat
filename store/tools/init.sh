@@ -32,6 +32,9 @@ cat init_servers_test.txt|xargs -P0 -I% rsync -az ${ZIPLOG_EXEC_PATH}/* $USER@%:
 
 # setup
 #cat init_servers.txt | awk '{print $1}' | xargs -P0 -I% ssh $USER@% sudo sysctl -w vm.nr_hugepages=1024
+cat init_servers_test.txt | awk '{print $1}' | xargs -P0 -I% ssh $USER@% echo jp2585 | sudo sysctl -w vm.nr_hugepages=1024
+cat init_servers_test.txt | awk '{print $1}' | xargs -P0 -I% ssh $USER@% echo jp2585 | sudo /home/jp2585/boost_cpu.sh
+
 cat init_servers_test.txt | awk '{print $1}' | xargs -P0 -I% ssh $USER@% echo jp2585 | sudo mkdir -p /mnt/log
 cat init_servers_test.txt | awk '{print $1}' | xargs -P0 -I% ssh $USER@% echo jp2585 | sudo chmod 777 /mnt/log
 #cat init_servers.txt | awk '{print $1}' | xargs -n1 -P0 -I% ssh $USER@% 'sudo sysctl kernel.sched_min_granularity_ns=3000000; sudo sysctl kernel.sched_latency_ns=3000000'

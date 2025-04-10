@@ -264,7 +264,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         if (wrk.ttype < 5) {
             // 5% - Add user transaction. 1,3
             int idx = wrk.keyIdx[0];
-            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval, /* read_only */true))) {
+            if ((ret = client->Get(keys[idx], idx, value, boost::this_fiber::yield, interval))) {
                 Warning("Aborting due to %s %d", keys[idx].c_str(), ret);
                 status = false;
             }
@@ -303,7 +303,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         } else {
             // 50% - Get followers/timeline transaction. rand(1,10),0
             for (int keyIdx : wrk.keyIdx) {
-                if ((ret = client->Get(keys[keyIdx], keyIdx, value, boost::this_fiber::yield, interval))) {
+                if ((ret = client->Get(keys[keyIdx], keyIdx, value, boost::this_fiber::yield, interval, /* read_only */true))) {
                     Warning("Aborting due to %s %d", keys[keyIdx].c_str(), ret);
                     status = false;
                 }
