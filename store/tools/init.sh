@@ -17,7 +17,7 @@ ZIPLOG_EXEC_PATH=/home/$USER/ZipKatSOSP/third_party/ziplog/build
 #cat init_servers.txt|xargs -I% rsync -az $USER@%:ziplog .
 #cat init_servers.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/meerkatstore/meerkatir/meerkat_server $USER@%:${TARGET_PATH}
 cat init_servers_test.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/benchmark/* $USER@%:${TARGET_PATH}
-cat init_servers_test.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/shard0.config $USER@%:${TARGET_PATH}
+#cat init_servers_test.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/f1.shard0.config $USER@%:${TARGET_PATH}
 cat init_servers_test.txt|xargs -P0 -I% rsync -az ${ZIPLOG_EXEC_PATH}/* $USER@%:${TARGET_PATH}
 #cat init_servers.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/tools/f1.shard0.config $USER@%:${TARGET_PATH}
 #cat init_servers_test.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/tools/keys $USER@%:${TARGET_PATH}

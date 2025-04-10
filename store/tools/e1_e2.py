@@ -61,7 +61,7 @@ def main(args):
           zipf_coefficient = zipf_coefficient,
       )
 
-      for zipf_coefficient in [0]
+      for zipf_coefficient in [0, 0.75]
       #for zipf_coefficient in [1, 0.8]
 
       # Keep load 24 clients per core
@@ -98,7 +98,7 @@ def main(args):
     ]
 
     # Run every experiment three times.
-    parameters_list = [q for p in parameters_list for q in [p] * 3]
+    parameters_list = [q for p in parameters_list for q in [p] * 1]
 
     # Run the suite.
     suite_dir = benchmark.SuiteDirectory(args.suite_directory, 'e1_and_e2')

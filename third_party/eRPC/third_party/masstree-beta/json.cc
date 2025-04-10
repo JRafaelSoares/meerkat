@@ -114,7 +114,7 @@ void Json::ObjectJson::grow(bool copy)
         else if (copy)
             new((void*) oi) ObjectItem(ob->v_.first, ob->v_.second, ob->next_);
         else
-            memcpy((void*) oi, ob, sizeof(ObjectItem));
+            memcpy(oi, ob, sizeof(ObjectItem));
     }
     if (!copy)
         operator delete[](reinterpret_cast<void *>(os_));
@@ -265,8 +265,7 @@ void Json::hard_uniqueify_array(bool convert, int ncap_in) {
                 if (i >= unsigned(u_.a.x->capacity))
                     hard_uniqueify_array(false, i + 1);
                 if (i >= unsigned(u_.a.x->size)) {
-                    memset(&u_.a.x->a[u_.a.x->size].u_, 0,
-                           sizeof(Json) * (i + 1 - u_.a.x->size));
+                    memset(&u_.a.x->a[u_.a.x->size], 0, sizeof(Json) * (i + 1 - u_.a.x->size));
                     u_.a.x->size = i + 1;
                 }
                 u_.a.x->a[i] = ob->v_.second;
@@ -341,8 +340,7 @@ void* Json::uniqueify_array_insert(bool convert, size_type pos) {
         pos = size;
     precondition(pos >= 0 && pos <= size);
     if (pos != size)
-        memmove(&u_.a.x->a[pos + 1].u_, &u_.a.x->a[pos].u_,
-                (size - pos) * sizeof(Json));
+        memmove(&u_.a.x->a[pos + 1], &u_.a.x->a[pos], (size - pos) * sizeof(Json));
     ++u_.a.x->size;
     return (void*) &u_.a.x->a[pos];
 }
@@ -356,7 +354,7 @@ Json::array_iterator Json::erase(array_iterator first, array_iterator last) {
         for (size_type pos = fpos; pos != lpos; ++pos)
             u_.a.x->a[pos].~Json();
         if (lpos != size)
-            memmove(&u_.a.x->a[fpos].u_, &u_.a.x->a[lpos].u_,
+            memmove(&u_.a.x->a[fpos], &u_.a.x->a[lpos],
                     (size - lpos) * sizeof(Json));
         u_.a.x->size -= lpos - fpos;
     }
@@ -533,8 +531,7 @@ Json& Json::hard_get_insert(size_type x) {
     else {
         uniqueify_array(true, x + 1);
         if (u_.a.x->size <= x) {
-            memset(&u_.a.x->a[u_.a.x->size].u_, 0,
-                   sizeof(Json) * (x + 1 - u_.a.x->size));
+            memset(&u_.a.x->a[u_.a.x->size], 0, sizeof(Json) * (x + 1 - u_.a.x->size));
             u_.a.x->size = x + 1;
         }
         return u_.a.x->a[x];
@@ -577,12 +574,10 @@ bool Json::unparse_is_complex() const {
         }
     } else if (is_array()) {
         if (ArrayJson *aj = ajson()) {
-            if (aj->size > 1024)
+            if (aj->size > 8)
                 return true;
             for (Json* it = aj->a; it != aj->a + aj->size; ++it)
-                if (!it->empty()
-                    && (!it->is_primitive()
-                        || (it->is_string() && it - aj->a >= 4 && it->as_s().length() > 40)))
+                if (!it->empty() && !it->is_primitive())
                     return true;
         }
     }

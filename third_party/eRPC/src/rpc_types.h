@@ -19,17 +19,12 @@ class ReqHandle;
 /**
  * @relates Rpc
  *
- * @brief The type of the request handler function invoked at the server on
- * receiving a request.
+ * @brief The type of the request handler function invoked at the server when a
+ * request is received. The application owns the request handle (and therefore
+ * the request message buffer) until it calls Rpc::enqueue_response.
  *
- * The application need not enqueue the response inside the request handler.
- * It can do so later.
- *
- * Request buffer ownership: The application owns the request message buffer
- * until it enqueues the response, except in one common case. If zero-copy
- * RX is enabled (i.e., kZeroCopyRx is true) and the request message fits in
- * one packet, the application owns the request message buffer for only the
- * duration of the request handler.
+ * The application need not enqueue the response in the body of the request
+ * handler. This is true even if the request handler is foreground-mode.
  *
  * @param ReqHandle A handle to the received request
  * @param context The context that was used while creating the Rpc object
@@ -62,21 +57,21 @@ enum class ReqFuncType : uint8_t { kForeground, kBackground };
  */
 class ReqFunc {
  public:
-  erpc_req_func_t req_func_;   ///< The handler function
-  ReqFuncType req_func_type_;  ///< The handlers's mode (foreground/background)
+  erpc_req_func_t req_func;   ///< The handler function
+  ReqFuncType req_func_type;  ///< The handlers's mode (foreground/background)
 
   inline bool is_background() const {
-    return req_func_type_ == ReqFuncType::kBackground;
+    return req_func_type == ReqFuncType::kBackground;
   }
 
-  ReqFunc() { req_func_ = nullptr; }
+  ReqFunc() { req_func = nullptr; }
 
   ReqFunc(erpc_req_func_t req_func, ReqFuncType req_func_type)
-      : req_func_(req_func), req_func_type_(req_func_type) {
+      : req_func(req_func), req_func_type(req_func_type) {
     rt_assert(req_func != nullptr, "Invalid Ops with null handler function");
   }
 
   /// Check if this request handler is registered
-  inline bool is_registered() const { return req_func_ != nullptr; }
+  inline bool is_registered() const { return req_func != nullptr; }
 };
 }  // namespace erpc

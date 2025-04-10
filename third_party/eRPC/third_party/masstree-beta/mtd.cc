@@ -380,7 +380,7 @@ void kvtest_client::fail(const char *fmt, ...) {
     if (doprint) {
         failing_lock.lock();
         fprintf(stdout, "%d: %s", ti_->index(), m.c_str());
-        tree->print(stdout);
+        tree->print(stdout, 0);
         fflush(stdout);
     }
 
@@ -775,7 +775,7 @@ main(int argc, char *argv[])
         runtest(dotest, tcpthreads);
       tree->stats(stderr);
       if (doprint)
-          tree->print(stdout);
+          tree->print(stdout, 0);
       exit(0);
   }
 

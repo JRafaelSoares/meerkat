@@ -15,7 +15,6 @@
  */
 #ifndef KVDB_FILE_HH
 #define KVDB_FILE_HH 1
-#include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <errno.h>

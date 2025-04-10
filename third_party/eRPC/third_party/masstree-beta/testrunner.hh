@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 class testrunner_base {
-public:
+  public:
     testrunner_base(const lcdf::String& name)
         : name_(name), next_(0) {
         thehead ? thetail->next_ = this : thehead = this;
@@ -25,7 +25,7 @@ public:
         return t;
     }
     static void print_names(FILE* stream, int maxcol);
-private:
+  private:
     static testrunner_base* thehead;
     static testrunner_base* thetail;
     lcdf::String name_;
@@ -35,7 +35,7 @@ private:
 #ifdef TESTRUNNER_CLIENT_TYPE
 
 class testrunner : public testrunner_base {
-public:
+  public:
     inline testrunner(const lcdf::String& name)
         : testrunner_base(name) {
     }

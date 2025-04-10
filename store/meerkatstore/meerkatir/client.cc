@@ -209,7 +209,7 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
         if (promise == zip::api::zipkat_get_response::kNoPromise) {
             txn.disableFastValidation();
         } else if ((promise < snapshot_interval.lower_bound) || (timestamp > snapshot_interval.upper_bound)) {
-            if (!txn.getValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {
+            if (!txn.getFastValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {
                 txn.setPromiseNotUpdated();
             }
             txn.disableFastValidation();

@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#ifdef ERPC_RAW
+#ifdef RAW
 
 #include "mlx5_defs.h"
 #include "transport.h"
@@ -21,7 +21,7 @@ class RawTransport : public Transport {
 
   /// Enable the dumbpipe optimizations (multi-packet RECVs, overrunning CQ).
   /// This must work with the original unmodded drivers.
-  static constexpr bool kDumb = true;
+  static constexpr bool kDumb = false;
 
   /// Enable fast RECV posting (FaSST, OSDI 16). This requires the modded
   /// driver. This is irrelevant if dumbpipe optimizations are enabled.
@@ -32,7 +32,7 @@ class RawTransport : public Transport {
   static constexpr size_t kMTU = 1024;
 
   // Multi-packet RQ constants
-  static constexpr size_t kLogNumStrides = 9;
+  static constexpr size_t kLogNumStrides = 6;
   static constexpr size_t kLogStrideBytes = 10;
   static constexpr size_t kStridesPerWQE = (1ull << kLogNumStrides);
   static constexpr size_t kCQESnapshotCycle = 65536 * kStridesPerWQE;
@@ -119,11 +119,11 @@ class RawTransport : public Transport {
 
   ~RawTransport();
 
-  void fill_local_routing_info(routing_info_t *routing_info) const;
-  bool resolve_remote_routing_info(routing_info_t *routing_info) const;
+  void fill_local_routing_info(RoutingInfo *routing_info) const;
+  bool resolve_remote_routing_info(RoutingInfo *routing_info) const;
   size_t get_bandwidth() const { return resolve.bandwidth; }
 
-  static std::string routing_info_str(routing_info_t *ri) {
+  static std::string routing_info_str(RoutingInfo *ri) {
     return reinterpret_cast<eth_routing_info_t *>(ri)->to_string();
   }
 

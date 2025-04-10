@@ -5,22 +5,26 @@
 
 #pragma once
 
-#include <signal.h>
 #include <stddef.h>
+extern "C" {
+#include <raft/raft.h>
+}
+
+#include <libpmem.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <set>
-#include <unordered_map>
 
 #include "../apps_common.h"
-#include "pmem_log.h"
+#include "mica/util/cityhash/city.h"
 #include "time_entry.h"
-#include "util/autorun_helpers.h"
-#include "util/hdr_histogram_wrapper.h"
 
-extern "C" {
-#include <raft.h>
-}
+#include "mica/table/fixedtable.h"
+#include "mica/util/hash.h"
+
+#include "pmem_log.h"
+#include "util/autorun_helpers.h"
 
 static constexpr bool kUsePmem = false;
 
@@ -32,20 +36,22 @@ static constexpr size_t kAppServerRpcId = 2;  // Rpc ID of all Raft servers
 static constexpr size_t kAppClientRpcId = 3;  // Rpc ID of the Raft client
 
 // Key-value configuration
-
-/// Number of keys in the replicated key-value store
 static constexpr size_t kAppNumKeys = MB(1);  // 1 million keys ~ ZabFPGA
 static_assert(erpc::is_power_of_two(kAppNumKeys), "");
 
-/// Size of values in the replicated key-value store, in bytes
-static constexpr size_t kAppValueSize = 32;
+static constexpr size_t kAppKeySize = 16;
+static constexpr size_t kAppValueSize = 64;
+static_assert(kAppKeySize % sizeof(size_t) == 0, "");
 static_assert(kAppValueSize % sizeof(size_t) == 0, "");
+
+typedef mica::table::FixedTable<mica::table::BasicFixedTableConfig> FixedTable;
+static_assert(sizeof(FixedTable::ft_key_t) == kAppKeySize, "");
 
 // Debug/measurement
 static constexpr bool kAppTimeEnt = false;
-static constexpr bool kAppMeasureCommitLatency = false;  // Leader latency
-static constexpr bool kAppVerbose = false;
-static constexpr bool kAppEnableRaftConsoleLog = false;  // Non-null console log
+static constexpr bool kAppMeasureCommitLatency = true;  // Leader latency
+static constexpr bool kAppVerbose = true;
+static constexpr bool kAppEnableRaftConsoleLog = true;  // Non-null console log
 
 // willemt/raft uses a very large 1000 ms election timeout
 static constexpr size_t kAppRaftElectionTimeoutMsec = 1000;
@@ -68,20 +74,17 @@ enum class ReqType : uint8_t {
   kClientReq         // Client-to-server Rpc
 };
 
-/// The value type for the key-value pairs
-struct value_t {
-  size_t v[kAppValueSize / sizeof(size_t)];
-};
-
-/// The client's key-value PUT request = the SMR command replicated in logs
+// The client's key-value PUT request = the SMR command replicated in logs
 struct client_req_t {
-  size_t key;
-  value_t value;
+  size_t key[kAppKeySize / sizeof(size_t)];
+  size_t value[kAppValueSize / sizeof(size_t)];
 
   std::string to_string() const {
     std::ostringstream ret;
-    ret << "[Key (" << std::to_string(key) << "), Value (";
-    for (size_t v : value.v) ret << std::to_string(v) << ", ";
+    ret << "[Key (";
+    for (size_t k : key) ret << std::to_string(k) << ", ";
+    ret << "), Value (";
+    for (size_t v : value) ret << std::to_string(v) << ", ";
     ret << ")]";
     return ret.str();
   }
@@ -176,8 +179,8 @@ class AppContext {
     // Request tags used for RPCs exchanged among Raft servers
     AppMemPool<raft_req_tag_t> raft_req_tag_pool;
 
-    /// The key-value store, replicated in the Raft cluster
-    std::unordered_map<size_t, value_t> table;
+    // App state
+    FixedTable *table = nullptr;
 
     // Stats
     erpc::Latency commit_latency;            // Amplification factor = 10
@@ -188,16 +191,13 @@ class AppContext {
   // SMR client members
   struct {
     size_t leader_idx;  // Client's view of the leader node's index in conn_vec
-
-    size_t num_resps_total = 0;
-    size_t num_resps_this_measurement = 0;
-    size_t num_console_prints = 0;
-
+    size_t num_resps = 0;
     erpc::MsgBuffer req_msgbuf;   // Preallocated req msgbuf
     erpc::MsgBuffer resp_msgbuf;  // Preallocated response msgbuf
 
-    erpc::ChronoTimer chrono_timer;  // For latency measurement
-    LatencyUsHdrHistogram lat_us_hdr_histogram;
+    // For latency measurement
+    uint64_t req_start_tsc;
+    std::vector<double> req_us_vec;  // We clear this after printing stats
   } client;
 
   // Common members
@@ -211,7 +211,8 @@ class AppContext {
 // unique at the cluster level. XXX: This can collide!
 static int get_raft_node_id_for_process(size_t process_id) {
   std::string uri = erpc::get_uri_for_process(process_id);
-  return std::hash<std::string>{}(uri);
+  uint32_t hash = CityHash32(uri.c_str(), uri.length());
+  return static_cast<int>(hash);
 }
 
 // eRPC session management handler

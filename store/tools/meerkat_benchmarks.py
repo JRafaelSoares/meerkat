@@ -113,6 +113,7 @@ def azure_servers():
 def clients():
     return {
         RemoteHost('192.168.9.16') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.30') : {'phys_port'  : 0},
         RemoteHost('192.168.9.21') : {'phys_port'  : 0},
         RemoteHost('192.168.9.22') : {'phys_port'  : 0},
         RemoteHost('192.168.9.24') : {'phys_port'  : 0},
@@ -120,7 +121,6 @@ def clients():
         RemoteHost('192.168.9.26') : {'phys_port'  : 0},
         RemoteHost('192.168.9.28') : {'phys_port'  : 0},
         RemoteHost('192.168.9.29') : {'phys_port'  : 0},
-        RemoteHost('192.168.9.30') : {'phys_port'  : 0}
     }
 
 def ziplog_order_ips():
