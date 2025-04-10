@@ -5,8 +5,8 @@ echo $BASEDIR
 USER="jp2585"
 TARGET_PATH=/home/$USER/build/
 CODEBASE=$BASEDIR/..
-EXEC_PATH=/home/$USER/project/
-ZIPLOG_EXEC_PATH=/home/$USER/project/third_party/ziplog/build
+EXEC_PATH=/home/$USER/ZipKatSOSP/
+ZIPLOG_EXEC_PATH=/home/$USER/ZipKatSOSP/third_party/ziplog/build
 # It reads the servers to which servers will it execute from init_servers
 # And it executes rsync (basically copy the files) from the current server to the designated servers
 
@@ -20,7 +20,7 @@ cat init_servers_test.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/benchmark/*
 cat init_servers_test.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/shard0.config $USER@%:${TARGET_PATH}
 cat init_servers_test.txt|xargs -P0 -I% rsync -az ${ZIPLOG_EXEC_PATH}/* $USER@%:${TARGET_PATH}
 #cat init_servers.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/tools/f1.shard0.config $USER@%:${TARGET_PATH}
-#cat init_servers.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/tools/keys $USER@%:${TARGET_PATH}
+#cat init_servers_test.txt|xargs -P0 -I% rsync -az ${EXEC_PATH}/store/tools/keys $USER@%:${TARGET_PATH}
 #cat init_servers.txt|xargs -P0 -I% rsync -az $CODEBASE/fractus/configs $USER@%:${TARGET_PATH}
 #cat init_servers.txt|xargs -P0 -I% rsync -az $CODEBASE/dep-setup.sh $USER@%:${TARGET_PATH}
 #cat init_servers.txt|xargs -I% ssh $USER@% sh ${TARGET_PATH}/dep-setup.sh

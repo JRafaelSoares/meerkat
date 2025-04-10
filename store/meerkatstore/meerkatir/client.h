@@ -75,7 +75,7 @@ public:
 public:
     // Returns the underlying read and write set.
     const Transaction& GetTransaction() const { return txn; }
-    const bool getValidation() {return txn.getValidation(); }
+    const bool getFastValidation() {return txn.getFastValidation(); }
     const bool getPromiseNotUpdated() {return txn.getPromiseNotUpdated(); }
     const bool getHotKey() {return txn.getHotKey(); }
 

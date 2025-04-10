@@ -1,5 +1,5 @@
 ZIPKAT_PATH=/home/jp2585/build
-ZIPLOG_ORDER_IP=192.168.99.21
+ZIPLOG_ORDER_IP=192.168.99.17
 ZIPLOG_ORDER_PORT=6666
 python3 e1_e2.py \
 		--ziplog_order_binary ${ZIPKAT_PATH}/order \

@@ -50,7 +50,8 @@ BenchmarkResult = collections.namedtuple('BenchmarkResult', [
     'median_latency_failure',
     'p99_latency_failure',
     'p999_latency_failure',
-    'validated_percentage',
+    'fast_validated_percentage_committed',
+    'fast_validated_percentage_global',
     'promise_not_changed',
     'unnecessary_validated_percentage',
     'hot_key_validated_percentage',
@@ -162,25 +163,21 @@ def process_log(lines, conn):
     read_txn_success_latencies = []
 
     read_txn_count = 0
-    validated_read_txn = 0
+    fast_validated_read_txn = 0
     promise_wasnt_updated = 0
-    unnecessary_validations = 0
+    unnecessary_slow_validations = 0
     read_txn_aborts = 0
     hot_key_validation = 0
     hot_key_total = 0
 
     for line in lines:
         parts = line.strip().split()
-        assert len(parts) == 9 or len(parts) == 10, parts
-
-        if len(parts) == 10:
-            extra = int(parts[8])
-        else:
-            extra = 0
+        assert len(parts) == 11, parts
 
         lat = int(parts[3])
+        committed = bool(parts[4])
         txn_type = int(parts[5])
-        validated = bool(int(parts[6]))
+        fast_validated = bool(int(parts[6]))
         promise_didnt_change = bool(int(parts[7]))
         hot_key = bool(int(parts[8]))
 
@@ -190,16 +187,24 @@ def process_log(lines, conn):
             read_txn_count += 1
             if hot_key:
                 hot_key_total += 1
-            if validated:
-                validated_read_txn += 1
+            if fast_validated:
+                fast_validated_read_txn += 1
+            else:
+                if committed:
+                    unnecessary_slow_validations += 1
+
+            """
+            if not fast_validated:
+                slow_validated_read_txn += 1
                 if promise_didnt_change:
                     promise_wasnt_updated += 1
-                if bool(int(parts[4])):
+                if committed:
                     unnecessary_validations += 1
                 if hot_key:
                     hot_key_validation += 1
+            """
 
-        if bool(int(parts[4])):
+        if committed:
             succ_lats.append(lat)
             if txn_type == 1:
                 add_user_txn_success_latencies.append(lat)
@@ -215,7 +220,7 @@ def process_log(lines, conn):
                 read_txn_aborts += 1
 
 
-    conn.send([all_lats, succ_lats, fail_lats, read_txn_count, validated_read_txn, unnecessary_validations,
+    conn.send([all_lats, succ_lats, fail_lats, read_txn_count, fast_validated_read_txn, unnecessary_slow_validations,
                add_user_txn_success_latencies, follow_txn_success_latencies, tweet_txn_success_latencies, read_txn_success_latencies, read_txn_aborts, promise_wasnt_updated, hot_key_total, hot_key_validation])
 
 def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
@@ -294,9 +299,9 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
     read_txn_success_latencies = []
 
     read_txn_count = 0
-    validated = 0
+    fast_validated = 0
     promise_not_changed = 0
-    unecessary_validated = 0
+    unecessary_slow_validated = 0
     read_txn_aborts = 0
     hot_key_validation = 0
     hot_key_total = 0
@@ -311,8 +316,8 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         success_latencies += ret[1]
         failure_latencies += ret[2]
         read_txn_count += ret[3]
-        validated += ret[4]
-        unecessary_validated += ret[5]
+        fast_validated += ret[4]
+        unecessary_slow_validated += ret[5]
         add_user_txn_success_latencies += ret[6]
         follow_txn_success_latencies += ret[7]
         tweet_txn_success_latencies += ret[8]
@@ -357,9 +362,12 @@ def process_client_logs_parallel(client_log_filename, warmup_sec, duration_sec):
         median_latency_failure = median(failure_latencies),
         p99_latency_failure = p99(failure_latencies),
         p999_latency_failure = p999(failure_latencies),
-        validated_percentage = 0 if read_txn_count == 0 else validated / read_txn_count,
-        promise_not_changed = 0 if validated == 0 else promise_not_changed / validated,
-        unnecessary_validated_percentage = 0 if validated == 0 else unecessary_validated / validated,
+        fast_validated_percentage_committed = 0 if len(read_txn_success_latencies) == 0 else fast_validated / len(read_txn_success_latencies),
+        fast_validated_percentage_global = 0 if read_txn_count == 0 else fast_validated / read_txn_count,
+        unnecessary_validated_percentage = 0 if unecessary_slow_validated == 0 else unecessary_slow_validated / (len(read_txn_success_latencies)-fast_validated),
+        promise_not_changed = 0,
+        #slow_validated_percentage = 0 if read_txn_count == 0 else slow_validated / read_txn_count,
+        #promise_not_changed = 0 if slow_validated == 0 else promise_not_changed / slow_validated,
         hot_key_validated_percentage = 0 if hot_key_validation == 0 else hot_key_validation / hot_key_total,
         add_user_txn_success_latencies = mean(add_user_txn_success_latencies),
         follow_txn_success_latencies = mean(follow_txn_success_latencies),

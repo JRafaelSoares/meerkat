@@ -207,11 +207,12 @@ int Client::Get(const string &key, int idx, string &value, yield_t yield, Interv
     if (timestamp != zip::api::zipkat_get_response::kKeyNotFound) {
         ASSERT(timestamp <= promise);
         if (promise < snapshot_interval.lower_bound || timestamp > snapshot_interval.upper_bound) {
-
-            if (!txn.getValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {
+            Debug("[%lu] Disable Fast Validation. Current Interval: [%lu,%lu] Received Interval: [%lu, %lu]",
+                client_id, snapshot_interval.lower_bound, snapshot_interval.upper_bound, timestamp, promise);
+            if (!txn.getFastValidation() && (promise == timestamp || snapshot_interval.lower_bound == snapshot_interval.upper_bound)) {
                 txn.setPromiseNotUpdated();
             }
-            txn.setValidation();
+            txn.disableFastValidation();
         } else {
             snapshot_interval.lower_bound = std::max(snapshot_interval.lower_bound, timestamp);
             snapshot_interval.upper_bound = std::min(snapshot_interval.upper_bound, promise);
@@ -236,7 +237,7 @@ int Client::Put(const string &key, int idx, const string &value)
 #else
     Debug("PUT [%lu, %lu : %s]", client_id, t_id, key.c_str());
     // Update the write set.
-    txn.setValidation();
+    txn.disableFastValidation();
     txn.addWriteSet(key, idx, value);
     return REPLY_OK;
 #endif
@@ -308,10 +309,10 @@ bool Client::Commit(yield_t yield)
     auto start = std::chrono::high_resolution_clock::now();
 #endif
     int status;
-    if (txn.getValidation()){
-        status = Prepare(yield);
-    } else {
+    if (txn.getFastValidation()){
         status = REPLY_OK;
+    } else {
+        status = Prepare(yield);
     }
 
 #ifdef ZIP_MEASURE

@@ -1,3 +1,11 @@
+compute17
+compute20
 compute21
 compute22
-compute16
+compute24
+compute25
+compute26
+compute28
+compute29
+compute30
+compute31

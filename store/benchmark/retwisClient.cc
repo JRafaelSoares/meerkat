@@ -10,6 +10,7 @@
 #include "store/common/truetime.h"
 #include "store/meerkatstore/meerkatir/client.h"
 #include "store/common/flags.h"
+
 #include "network/buffer.h"
 #include "network/manager.h"
 
@@ -163,11 +164,16 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
     std::cout << "Zipfian Flag " << FLAGS_zipf << std::endl;
 
     // Open file to dump results
-    //uint32_t global_client_id = FLAGS_nhost * 1000 + FLAGS_ncpu * FLAGS_numClientThreads + thread_id;
-    //FILE* fp = fopen((FLAGS_logPath + "/client." + std::to_string(global_client_id) + ".log").c_str(), "w");
     uint32_t global_thread_id = thread_id;
     FILE* fp = fopen((FLAGS_logPath + "/client." + std::to_string(global_thread_id) + ".log").c_str(), "w");
 
+    /*
+     *CSV FORMATING, CONTINUE LATER
+    FILE* fp = fopen((FLAGS_logPath + "/client." + std::to_string(global_thread_id) + ".csv").c_str(), "w");
+    fprintf(fp, "%s", "txn,txn_id,start,end,latency,committed,txn_type,validated,promise_updated,hot_key\n");
+
+    auto csv_format = "%d,%ld.%06ld,%ld.%06ld,%ld,%d,%d,%d,%d,%d,%d,%d\n";
+    */
     std::cout << "Start RetwisClient-" << global_thread_id << std::endl;
     // Trying to distribute as equally as possible the clients on the
     // replica cores.
@@ -339,34 +345,29 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
             long latency = status ?
                 (t2.tv_sec - wrk.start.tv_sec)*1000000 + (t2.tv_usec - wrk.start.tv_usec) :
                 (t2.tv_sec - t1.tv_sec)*1000000 + (t2.tv_usec - t1.tv_usec);
+            /*
+
+            if (status) {
+                sprintf(buffer, csv_format, ++nTransactions, wrk.start.tv_sec,
+                        wrk.start.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
+            } else {
+                sprintf(buffer, csv_format, ++nTransactions, t1.tv_sec,
+                        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
+            }
+            */
 
             if (status) {
                 sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d %d %d %d\n", ++nTransactions, wrk.start.tv_sec,
-                        wrk.start.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
+                        wrk.start.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getFastValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
             } else {
                 sprintf(buffer, "%d %ld.%06ld %ld.%06ld %ld %d %d %d %d %d %d %d\n", ++nTransactions, t1.tv_sec,
-                        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
+                        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, client->getFastValidation()?1:0, client->getPromiseNotUpdated()?1:0, client->getHotKey()?1:0);
             }
             results.push_back(string(buffer));
             if (status) {
                 tCount++;
                 tLatency += latency;
             }
-
-            //printf("client-%d, %lu %ld.%06ld %ld.%06ld %ld %d\n", global_thread_id, nTransactions, t1.tv_sec,
-            //        t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0);
-/*
-            if (nTransactions > results.size())
-                results.emplace_back(measurement{nTransactions, t1, t2, status, ttype, client->getValidation()});
-            else
-                results[nTransactions] = measurement {nTransactions + 1, t1, t2, status, ttype, client->getValidation()};
-            ++nTransactions;
-        }
-
-        if (i % 10 == 0) {
-            fprintf(fp, "yoyo nTransaction=%lu, has been running for %ld usec, tv_sec=%ld, warmup=%ld, duration-warmup=%ld\n", nTransactions, (t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec), t2.tv_sec, FLAGS_secondsFromEpoch + FLAGS_warmup, FLAGS_secondsFromEpoch + FLAGS_duration - FLAGS_warmup);
-        }
-*/
 
         }
         gettimeofday(&t1, NULL);
@@ -375,25 +376,6 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
                 break;
         }
     }
-  
-/*
-    std::cout << "start writing to log file\n";
-    for (auto& r : results) {
-        if (r.nTransaction == 0) {
-            // Skip the pre-filled elements   
-            break;
-        }
-        const auto latency = (r.end.tv_sec - r.start.tv_sec)*1000000 + (r.end.tv_usec - r.start.tv_usec);
-        fprintf(fp, "%d %ld.%06ld %ld.%06ld %ld %d %d %d\n",
-            r.nTransaction, r.start.tv_sec, r.start.tv_usec, r.end.tv_sec, r.end.tv_usec, latency, r.status?1:0, r.ttype, r.validated?1:0);
-
-        if (r.status) {
-            tCount++;
-            tLatency += latency;
-        }
-    }
-    std::cout << "Write to log file done\n";
-*/
 
     for (auto line : results) {
         fprintf(fp, "%s", line.c_str());

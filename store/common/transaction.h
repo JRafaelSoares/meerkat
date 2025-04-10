@@ -79,7 +79,7 @@ private:
 #endif
 
     // flag tells us if we must validate the transaction or if we may skip it
-    bool validation = false;
+    bool fast_validation = true;
 
     // flag tells us if we must validate the transaction or if we may skip it
     bool promise_not_updated = false;
@@ -113,8 +113,8 @@ public:
         return readSet.size() * sizeof(read_t) + writeSet.size() * sizeof(write_t) + keyIndexes.size() * sizeof(int);
 #endif
     }
-    void setValidation() {validation = true; }
-    const bool getValidation() {return validation; }
+    void disableFastValidation() {fast_validation = false; }
+    const bool getFastValidation() {return fast_validation; }
 
     void setPromiseNotUpdated() {promise_not_updated = true; }
     const bool getPromiseNotUpdated() {return promise_not_updated; }

@@ -112,53 +112,19 @@ def azure_servers():
 # listed by ibv_devinfo.
 def clients():
     return {
-        #RemoteHost('10.100.5.3') : {'phys_port'  : 1}, # anteater-1g
-        #RemoteHost('10.100.3.49') : {'phys_port'  : 0}, # bongo-1g
-        #RemoteHost('10.100.5.7') : {'phys_port'  : 1}, # capybara-1g
-        #RemoteHost('10.100.5.13') : {'phys_port'  : 0}, # ibex-1g
-        #RemoteHost('10.100.5.146'): {'phys_port'  : 1}, # lemur-1g
-        #RemoteHost('10.100.5.144'): {'phys_port'  : 1}, # mongoose-1g
-        #RemoteHost('10.100.5.15'): {'phys_port'  : 1}, # okapi-1g
-        #RemoteHost('10.100.5.138'): {'phys_port'  : 1}, # platypus-1g
-        #RemoteHost('10.100.5.23') : {'phys_port'  : 0}, # rhinoceros-1g
-        #RemoteHost('10.100.5.25') : {'phys_port'  : 0}, # sloth-1g
-        RemoteHost('192.168.99.21') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.20') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.16') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.22') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.24') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.25') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.26') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.28') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.29') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.30') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.105') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.106') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.17') : {'phys_port'  : 0},
-        ##RemoteHost('192.168.99.27') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.29') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.28') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.18') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.30') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.20') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.21') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.22') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.24') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.25') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.26') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.28') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.29') : {'phys_port'  : 0},
     }
-    #return {
-    #    RemoteHost('10.100.1.2') : {'phys_port'  : 1}, # anteater
-    #    RemoteHost('10.100.1.3') : {'phys_port'  : 0}, # bongo
-    #    RemoteHost('10.100.1.4') : {'phys_port'  : 1}, # capybara
-    #    ###RemoteHost('10.100.1.7') : {'phys_port'  : 1}, # fossa
-    #    RemoteHost('10.100.1.13'): {'phys_port'  : 1}, # lemur
-    #    RemoteHost('10.100.1.14'): {'phys_port'  : 1}, # mongoose
-    #    RemoteHost('10.100.1.16'): {'phys_port'  : 1}, # okapi
-    #    RemoteHost('10.100.1.17'): {'phys_port'  : 1}, # platypus
-    #    RemoteHost('10.100.1.19') : {'phys_port'  : 0}, # rhinoceros
-    #    ##RemoteHost('10.100.1.20'): {'phys_port'  : 1}, # sloth
-    #}
 
 def ziplog_order_ips():
     return [
-        #'192.168.99.16',
-        '192.168.99.17',
-        #'192.168.99.30',
+        '192.168.9.17',
     ]
 
 def ziplog_order_servers():
@@ -169,12 +135,9 @@ def ziplog_order_servers():
 
 def ziplog_storage_servers():
     return {
-        #RemoteHost('192.168.99.22') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.28') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.29') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.30') : {'phys_port'  : 0},
-        RemoteHost('192.168.99.31') : {'phys_port'  : 0},
-        #RemoteHost('192.168.99.16') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.30') : {'phys_port'  : 0},
+        RemoteHost('192.168.9.31') : {'phys_port'  : 0},
+
     }
 
 def num_clients_to_triple(num_clients):
@@ -450,9 +413,9 @@ def kill_clients(ziplog_clients, parameters):
     # We can't use PyREM's stop function because we need sudo priviledges
     #parallel_server_tasks.stop()
     kill_tasks = []
-    for host_i, client in enumerate(list(ziplog_clients.keys())[:parameters.num_client_machines]):
+    for host_i, client in enumerate(list(ziplog_clients.keys())):
         cmd = [
-            "sudo killall -9", parameters.client_binary.split('/')[-1]
+            "killall -9", parameters.client_binary.split('/')[-1]
         ]
 
         # Record (and print) the command we run, so that we can re-run it later
@@ -487,6 +450,12 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
     # setup_rx_queues(servers, parameters.num_server_threads)
 
     bench_dir.write_string('logs_cleared_time.txt', str(datetime.datetime.now()))
+
+    # CLear any remaining instance
+    print(boxed('Killing clients'))
+    kill_clients(clients, parameters)
+    print(boxed('Killing servers.'))
+    kill_servers(ziplog_order_servers, ziplog_storage_servers)
 
     # Start the servers
     start_ziplog_order(ziplog_order_servers, parameters, bench_dir)

@@ -115,7 +115,7 @@ Transaction::clear()
 #else
     keyIndexes.clear();
 #endif
-    validation = false;
+    fast_validation = true;
     promise_not_updated = false;
     hot_key = false;
 }
