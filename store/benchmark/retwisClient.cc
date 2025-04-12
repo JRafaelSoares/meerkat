@@ -372,7 +372,7 @@ void client_fiber_func(int thread_id, std::shared_ptr<zip::client::client> ziplo
         }
         gettimeofday(&t1, NULL);
         if (((t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec)) > FLAGS_duration*1000000) {
-                // fprintf(fp, "yoyo break has running for %ld usec, tv_sec=%ld\n", (t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec), t1.tv_sec);
+            std::cout << "yoyo I fucking finished" << std::endl;
                 break;
         }
     }

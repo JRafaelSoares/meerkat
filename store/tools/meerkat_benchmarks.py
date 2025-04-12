@@ -378,7 +378,7 @@ def start_ziplog_storages(ziplog_storage_servers, parameters, bench_dir):
     parallel_server_tasks = Parallel(tasks, aggregate=True)
     parallel_server_tasks.start()
     print('Waiting for ziplog storage servers to start.')
-    time.sleep(2 + parameters.num_keys / 300000)
+    time.sleep(2 + 30 + parameters.num_keys / 300000)
 
 def kill_servers(ziplog_order_servers, ziplog_storage_servers):
     # Kill ziplog orders
@@ -523,7 +523,7 @@ def run_benchmark(bench_dir, clients, ziplog_order_servers, ziplog_storage_serve
     #parallel_client_tasks.start(wait=True)
 
     # Kill the clients if they're not finished.
-    time.sleep(15 + parameters.benchmark_duration_seconds)
+    time.sleep(45 + parameters.benchmark_duration_seconds)
     #time.sleep(3 * parameters.benchmark_duration_seconds)
     print(boxed('Killing clients'))
     kill_clients(clients, parameters)
